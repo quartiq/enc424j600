@@ -7,6 +7,7 @@ version = "0.1.0"
 keywords = ["ethernet", "eth", "enc424j600", "stm32", "stm32f4xx"]
 repository = "https://git.m-labs.hk/M-Labs/ENC424J600"
 edition = "2018"
+license = "BSD-2-Clause"
 
 [dependencies]
 volatile-register = "0.2"

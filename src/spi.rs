@@ -131,13 +131,17 @@ impl <SPI: Transfer<u8>,
         match self.spi.transfer(&mut buf) {
             Ok(_) => {
                 // Disable chip select
+                cortex_m::asm::delay(10_u32);
                 self.nss.set_high();
+                cortex_m::asm::delay(5_u32);
                 Ok(buf[2])
             },
             // TODO: Maybe too naive?
             Err(_) => {
                 // Disable chip select
+                cortex_m::asm::delay(10_u32);
                 self.nss.set_high();
+                cortex_m::asm::delay(5_u32);
                 Err(SpiPortError::TransferError)
             }
         }

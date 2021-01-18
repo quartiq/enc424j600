@@ -5,7 +5,7 @@ description = "Embbeded Rust Ethernet driver for ENC424J600 Ethernet controller 
 authors = ["Harry Ho <hh@m-labs.hk>"]
 version = "0.1.0"
 keywords = ["ethernet", "eth", "enc424j600", "stm32", "stm32f4xx"]
-repository = "https://github.com/smoltcp-rs/ENC424J600"
+repository = "https://git.m-labs.hk/M-Labs/ENC424J600"
 edition = "2018"
 
 [dependencies]

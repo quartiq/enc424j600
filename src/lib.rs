@@ -29,6 +29,7 @@ pub trait EthController {
 }
 
 /// TODO: Improve these error types
+#[derive(Debug)]
 pub enum EthControllerError {
     SpiPortError,
     GeneralError,

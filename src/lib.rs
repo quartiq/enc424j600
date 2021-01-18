@@ -16,7 +16,7 @@ pub mod tx;
 pub mod smoltcp_phy;
 
 /// Max raw frame array size
-pub const RAW_FRAME_LENGTH_MAX: usize = 0x1000;
+pub const RAW_FRAME_LENGTH_MAX: usize = 1518;
 
 pub trait EthController {
     fn init_dev(&mut self, delay: &mut impl DelayUs<u16>) -> Result<(), EthControllerError>;

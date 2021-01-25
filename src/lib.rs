@@ -25,6 +25,7 @@ pub trait EthController {
     fn send_raw_packet(&mut self, packet: &tx::TxPacket) -> Result<(), EthControllerError>;
     fn set_promiscuous(&mut self) -> Result<(), EthControllerError>;
     fn read_from_mac(&mut self, mac: &mut [u8]) -> Result<(), EthControllerError>;
+    fn write_mac_address(&mut self, mac: &[u8]) -> Result<(), EthControllerError>;
 }
 
 /// TODO: Improve these error types
@@ -202,6 +203,16 @@ impl <SPI: Transfer<u8>,
         mac[3] = self.spi_port.read_reg_8b(spi::addrs::MAADR2 + 1)?;
         mac[4] = self.spi_port.read_reg_8b(spi::addrs::MAADR3)?;
         mac[5] = self.spi_port.read_reg_8b(spi::addrs::MAADR3 + 1)?;
+        Ok(())
+    }
+
+    fn write_mac_address(&mut self, mac: &[u8]) -> Result<(), EthControllerError> {
+        self.spi_port.write_reg_8b(spi::addrs::MAADR1, mac[0])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR1 + 1, mac[1])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR2, mac[2])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR2 + 1, mac[3])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR3, mac[4])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR3 + 1, mac[5])?;
         Ok(())
     }
 }

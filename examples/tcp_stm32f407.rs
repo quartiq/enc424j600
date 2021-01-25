@@ -80,7 +80,9 @@ use stm32f4xx_hal::{
 };
 type BoosterSpiEth = enc424j600::SpiEth<
     Spi<SPI1, (PA5<Alternate<AF5>>, PA6<Alternate<AF5>>, PA7<Alternate<AF5>>)>,
-    PA4<Output<PushPull>>>;
+    PA4<Output<PushPull>>,
+    fn(u32) -> ()
+>;
 
 pub struct NetStorage {
     ip_addrs: [IpCidr; 1],
@@ -153,11 +155,15 @@ const APP: () = {
                     enc424j600::spi::interfaces::SPI_MODE,
                     Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
                     clocks);
-                enc424j600::SpiEth::new(spi_eth_port, spi1_nss)
+
+                let delay_ns_fp: fn(u32) -> () = |time_ns| {
+                    cortex_m::asm::delay((time_ns*21)/125 + 1)
+                };
+                enc424j600::SpiEth::new(spi_eth_port, spi1_nss, delay_ns_fp)
             };
 
             // Init controller
-            match spi_eth.init_dev(&mut delay) {
+            match spi_eth.init_dev() {
                 Ok(_) => {
                     iprintln!(stim0, "Initializing Ethernet...")
                 }

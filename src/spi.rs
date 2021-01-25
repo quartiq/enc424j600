@@ -52,9 +52,11 @@ pub mod addrs {
 /// Struct for SPI I/O interface on ENC424J600
 /// Note: stm32f4xx_hal::spi's pins include: SCK, MISO, MOSI
 pub struct SpiPort<SPI: Transfer<u8>,
-                   NSS: OutputPin> {
+                   NSS: OutputPin,
+                   F: FnMut(u32) -> ()> {
     spi: SPI,
     nss: NSS,
+    delay_ns: F,
 }
 
 pub enum SpiPortError {
@@ -63,14 +65,16 @@ pub enum SpiPortError {
 
 #[allow(unused_must_use)]
 impl <SPI: Transfer<u8>,
-      NSS: OutputPin> SpiPort<SPI, NSS> {
+      NSS: OutputPin,
+      F: FnMut(u32) -> ()> SpiPort<SPI, NSS, F> {
     // TODO: return as Result()
-    pub fn new(spi: SPI, mut nss: NSS) -> Self {
+    pub fn new(spi: SPI, mut nss: NSS, delay_ns: F) -> Self {
         nss.set_high();
 
         SpiPort {
             spi,
-            nss
+            nss,
+            delay_ns,
         }
     }
 
@@ -115,6 +119,10 @@ impl <SPI: Transfer<u8>,
         Ok(())
     }
 
+    pub fn delay_us(&mut self, duration: u32) {
+        (self.delay_ns)(duration * 1000)
+    }
+
     // TODO: Generalise transfer functions
     // TODO: (Make data read/write as reference to array)
     // Currently requires 1-byte addr, read/write data is only 1-byte
@@ -131,17 +139,17 @@ impl <SPI: Transfer<u8>,
         match self.spi.transfer(&mut buf) {
             Ok(_) => {
                 // Disable chip select
-                cortex_m::asm::delay(10_u32);
+                (self.delay_ns)(60);
                 self.nss.set_high();
-                cortex_m::asm::delay(5_u32);
+                (self.delay_ns)(30);
                 Ok(buf[2])
             },
             // TODO: Maybe too naive?
             Err(_) => {
                 // Disable chip select
-                cortex_m::asm::delay(10_u32);
+                (self.delay_ns)(60);
                 self.nss.set_high();
-                cortex_m::asm::delay(5_u32);
+                (self.delay_ns)(30);
                 Err(SpiPortError::TransferError)
             }
         }

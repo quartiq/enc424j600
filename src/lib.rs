@@ -4,7 +4,6 @@ pub mod spi;
 use embedded_hal::{
     blocking::{
         spi::Transfer,
-        delay::DelayUs,
     },
     digital::v2::OutputPin,
 };
@@ -19,7 +18,7 @@ pub mod smoltcp_phy;
 pub const RAW_FRAME_LENGTH_MAX: usize = 1518;
 
 pub trait EthController {
-    fn init_dev(&mut self, delay: &mut impl DelayUs<u16>) -> Result<(), EthControllerError>;
+    fn init_dev(&mut self) -> Result<(), EthControllerError>;
     fn init_rxbuf(&mut self) -> Result<(), EthControllerError>;
     fn init_txbuf(&mut self) -> Result<(), EthControllerError>;
     fn receive_next(&mut self, is_poll: bool) -> Result<rx::RxPacket, EthControllerError>;
@@ -45,17 +44,19 @@ impl From<spi::SpiPortError> for EthControllerError {
 
 /// Ethernet controller using SPI interface
 pub struct SpiEth<SPI: Transfer<u8>,
-                  NSS: OutputPin> {
-    spi_port: spi::SpiPort<SPI, NSS>,
+                  NSS: OutputPin,
+                  F: FnMut(u32) -> ()> {
+    spi_port: spi::SpiPort<SPI, NSS, F>,
     rx_buf: rx::RxBuffer,
     tx_buf: tx::TxBuffer
 }
 
 impl <SPI: Transfer<u8>,
-      NSS: OutputPin> SpiEth<SPI, NSS> {
-    pub fn new(spi: SPI, nss: NSS) -> Self {
+      NSS: OutputPin,
+      F: FnMut(u32) -> ()> SpiEth<SPI, NSS, F> {
+    pub fn new(spi: SPI, nss: NSS, delay_ns: F) -> Self {
         SpiEth {
-            spi_port: spi::SpiPort::new(spi, nss),
+            spi_port: spi::SpiPort::new(spi, nss, delay_ns),
             rx_buf: rx::RxBuffer::new(),
             tx_buf: tx::TxBuffer::new()
         }
@@ -63,8 +64,9 @@ impl <SPI: Transfer<u8>,
 }
 
 impl <SPI: Transfer<u8>,
-      NSS: OutputPin> EthController for SpiEth<SPI, NSS> {
-    fn init_dev(&mut self, delay: &mut impl DelayUs<u16>) -> Result<(), EthControllerError> {
+      NSS: OutputPin,
+      F: FnMut(u32) -> ()> EthController for SpiEth<SPI, NSS, F> {
+    fn init_dev(&mut self) -> Result<(), EthControllerError> {
         // Write 0x1234 to EUDAST
         self.spi_port.write_reg_16b(spi::addrs::EUDAST, 0x1234)?;
         // Verify that EUDAST is 0x1234
@@ -80,15 +82,13 @@ impl <SPI: Transfer<u8>,
         // Set ETHRST (ECON2<4>) to 1
         let econ2 = self.spi_port.read_reg_8b(spi::addrs::ECON2)?;
         self.spi_port.write_reg_8b(spi::addrs::ECON2, 0x10 | (econ2 & 0b11101111))?;
-        // Wait for 25us
-        delay.delay_us(25_u16);
+        self.spi_port.delay_us(25);
         // Verify that EUDAST is 0x0000
         eudast = self.spi_port.read_reg_16b(spi::addrs::EUDAST)?;
         if eudast != 0x0000 {
             return Err(EthControllerError::GeneralError)
         }
-        // Wait for 256us
-        delay.delay_us(256_u16);
+        self.spi_port.delay_us(256);
         Ok(())
     }
 

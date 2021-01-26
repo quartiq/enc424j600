@@ -102,8 +102,6 @@ const APP: () = {
     struct Resources {
         eth_iface: EthernetInterface<
             'static,
-            'static,
-            'static,
             smoltcp_phy::SmoltcpDevice<BoosterSpiEth>>,
         itm: ITM
     }

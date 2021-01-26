@@ -1,8 +1,8 @@
 [package]
 categories = ["embedded", "no-std"]
 name = "enc424j600"
-description = "Embbeded Rust Ethernet driver for ENC424J600 Ethernet controller with SPI interface, compatible with STM32F4xx"
-authors = ["Harry Ho <hh@m-labs.hk>"]
+description = "Embbeded Rust Ethernet driver for ENC424J600 Ethernet controller with SPI interface"
+authors = ["Harry Ho <hh@m-labs.hk>", "Dip Cheung <dc@m-labs.hk>"]
 version = "0.2.0"
 keywords = ["ethernet", "eth", "enc424j600", "stm32", "stm32f4xx"]
 repository = "https://git.m-labs.hk/M-Labs/ENC424J600"

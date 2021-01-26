@@ -21,6 +21,9 @@ cortex-m-rt = { version = "0.6", optional = true }
 cortex-m-rtic = { version = "0.5.3", optional = true }
 panic-itm = { version = "0.4", optional = true }
 log = { version = "0.4", optional = true }
+embedded-time = { version = "0.10.1", optional = true }
+embedded-nal = { version = "0.1.0", optional = true }
+heapless = { version = "0.5.6", optional = true }
 
 [features]
 smoltcp-phy = ["smoltcp"]
@@ -31,6 +34,7 @@ smoltcp-phy-all = [
 # Example-based features
 tx_stm32f407 = ["stm32f4xx-hal/stm32f407", "cortex-m", "cortex-m-rtic", "panic-itm", "log"]
 tcp_stm32f407 = ["stm32f4xx-hal/stm32f407", "cortex-m", "cortex-m-rt", "cortex-m-rtic", "smoltcp-phy-all", "smoltcp/log", "panic-itm", "log"]
+nal = [ "embedded-time", "embedded-nal", "smoltcp-phy", "heapless" ]
 default = []
 
 [[example]]

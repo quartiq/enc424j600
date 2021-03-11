@@ -236,6 +236,7 @@ where
     }
 
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
+        let mut write_error = false;
         let mut non_queued_bytes = &buffer[..];
         while non_queued_bytes.len() != 0 {
             let result = {
@@ -254,9 +255,18 @@ where
                     // Process the unwritten bytes again, if any
                     non_queued_bytes = &non_queued_bytes[num_bytes..]
                 }
-                Err(_) => return Err(nb::Error::Other(NetworkError::WriteFailure)),
+                Err(_) => {
+                    write_error = true;
+                    break;
+                }
             }
         }
+        if write_error {
+            // Close the socket to push it back to the array, for
+            // re-opening the socket in the future
+            self.close(*socket)?;
+            return Err(nb::Error::Other(NetworkError::WriteFailure))
+        }   
         Ok(buffer.len())
     }
 
@@ -268,13 +278,19 @@ where
         // Enqueue received bytes into the TCP socket buffer
         self.update()?;
         self.poll()?;
-        let mut sockets = self.sockets.borrow_mut();
-        let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*socket);
-        let result = socket.recv_slice(buffer);
-        match result {
-            Ok(num_bytes) => Ok(num_bytes),
-            Err(_) => Err(nb::Error::Other(NetworkError::ReadFailure)),
+        {
+            let mut sockets = self.sockets.borrow_mut();
+            let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*socket);
+            let result = socket.recv_slice(buffer);
+            match result {
+                Ok(num_bytes) => { return Ok(num_bytes) },
+                Err(_) => {},
+            }
         }
+        // Close the socket to push it back to the array, for
+        // re-opening the socket in the future
+        self.close(*socket)?;
+        Err(nb::Error::Other(NetworkError::ReadFailure))
     }
 
     fn close(&self, socket: Self::TcpSocket) -> Result<(), Self::Error> {

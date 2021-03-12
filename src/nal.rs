@@ -146,8 +146,8 @@ where
             Some(handle) => {
                 // Abort any active connections on the handle.
                 let mut sockets = self.sockets.borrow_mut();
-                let internal_socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
-                internal_socket.abort();
+                let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
+                socket.abort();
                 Ok(handle)
             }
             None => Err(NetworkError::NoSocket),
@@ -156,30 +156,30 @@ where
 
     fn connect(
         &self,
-        socket: Self::TcpSocket,
+        handle: Self::TcpSocket,
         remote: nal::SocketAddr,
     ) -> Result<Self::TcpSocket, Self::Error> {
         {
             // If the socket has already been connected, ignore the connection
             // request silently.
             let mut sockets = self.sockets.borrow_mut();
-            let internal_socket: &mut net::socket::TcpSocket = &mut *sockets.get(socket);
-            if internal_socket.state() == net::socket::TcpState::Established {
-                return Ok(socket)
+            let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
+            if socket.state() == net::socket::TcpState::Established {
+                return Ok(handle)
             }
         }
 
         {
             let mut sockets = self.sockets.borrow_mut();
-            let internal_socket: &mut net::socket::TcpSocket = &mut *sockets.get(socket);
+            let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
             // abort() instead of close() prevents TcpSocket::connect() from
             // raising an error
-            internal_socket.abort();
+            socket.abort();
             match remote.ip() {
                 nal::IpAddr::V4(addr) => {
                     let address =
                         net::wire::Ipv4Address::from_bytes(&addr.octets()[..]);
-                    internal_socket
+                    socket
                         .connect((address, remote.port()), self.get_ephemeral_port())
                         .map_err(|_| NetworkError::ConnectionFailure)?;
                     net::wire::IpAddress::Ipv4(address)
@@ -187,7 +187,7 @@ where
                 nal::IpAddr::V6(addr) => {
                     let address =
                         net::wire::Ipv6Address::from_parts(&addr.segments()[..]);
-                    internal_socket
+                    socket
                         .connect((address, remote.port()), self.get_ephemeral_port())
                         .map_err(|_| NetworkError::ConnectionFailure)?;
                     net::wire::IpAddress::Ipv6(address)
@@ -201,19 +201,19 @@ where
         loop {
             {
                 let mut sockets = self.sockets.borrow_mut();
-                let internal_socket: &mut net::socket::TcpSocket = &mut *sockets.get(socket);
+                let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
                 // TCP state at ESTABLISHED means there is connection, so
                 // simply return the socket.
-                if internal_socket.state() == net::socket::TcpState::Established {
-                    return Ok(socket)
+                if socket.state() == net::socket::TcpState::Established {
+                    return Ok(handle)
                 }
                 // TCP state at CLOSED implies that the remote rejected connection;
                 // In this case, abort the connection, and then return the socket
                 // for re-connection in the future.
-                if internal_socket.state() == net::socket::TcpState::Closed {
-                    internal_socket.abort();
+                if socket.state() == net::socket::TcpState::Closed {
+                    socket.abort();
                     // TODO: Return Err(), but would require changes in quartiq/minimq
-                    return Ok(socket)
+                    return Ok(handle)
                 }
             }
             // Any TCP states other than CLOSED and ESTABLISHED are considered
@@ -224,24 +224,24 @@ where
             // Time out, and return the socket for re-connection in the future.
             if timeout_ms > self.connection_timeout_ms {
                 // TODO: Return Err(), but would require changes in quartiq/minimq
-                return Ok(socket)
+                return Ok(handle)
             }
         }
     }
 
-    fn is_connected(&self, socket: &Self::TcpSocket) -> Result<bool, Self::Error> {
+    fn is_connected(&self, handle: &Self::TcpSocket) -> Result<bool, Self::Error> {
         let mut sockets = self.sockets.borrow_mut();
-        let internal_socket: &mut net::socket::TcpSocket = &mut *sockets.get(*socket);
-        Ok(internal_socket.state() == net::socket::TcpState::Established)
+        let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*handle);
+        Ok(socket.state() == net::socket::TcpState::Established)
     }
 
-    fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
+    fn write(&self, handle: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
         let mut write_error = false;
         let mut non_queued_bytes = &buffer[..];
         while non_queued_bytes.len() != 0 {
             let result = {
                 let mut sockets = self.sockets.borrow_mut();
-                let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*socket);
+                let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*handle);
                 let result = socket.send_slice(non_queued_bytes);
                 result
             };
@@ -264,7 +264,7 @@ where
         if write_error {
             // Close the socket to push it back to the array, for
             // re-opening the socket in the future
-            self.close(*socket)?;
+            self.close(*handle)?;
             return Err(nb::Error::Other(NetworkError::WriteFailure))
         }   
         Ok(buffer.len())
@@ -272,7 +272,7 @@ where
 
     fn read(
         &self,
-        socket: &mut Self::TcpSocket,
+        handle: &mut Self::TcpSocket,
         buffer: &mut [u8],
     ) -> nb::Result<usize, Self::Error> {
         // Enqueue received bytes into the TCP socket buffer
@@ -280,7 +280,7 @@ where
         self.poll()?;
         {
             let mut sockets = self.sockets.borrow_mut();
-            let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*socket);
+            let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*handle);
             let result = socket.recv_slice(buffer);
             match result {
                 Ok(num_bytes) => { return Ok(num_bytes) },
@@ -289,15 +289,15 @@ where
         }
         // Close the socket to push it back to the array, for
         // re-opening the socket in the future
-        self.close(*socket)?;
+        self.close(*handle)?;
         Err(nb::Error::Other(NetworkError::ReadFailure))
     }
 
-    fn close(&self, socket: Self::TcpSocket) -> Result<(), Self::Error> {
+    fn close(&self, handle: Self::TcpSocket) -> Result<(), Self::Error> {
         let mut sockets = self.sockets.borrow_mut();
-        let internal_socket: &mut net::socket::TcpSocket = &mut *sockets.get(socket);
-        internal_socket.close();
-        self.unused_handles.borrow_mut().push(socket).unwrap();
+        let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
+        socket.close();
+        self.unused_handles.borrow_mut().push(handle).unwrap();
         Ok(())
     }
 }

@@ -297,7 +297,10 @@ where
         let mut sockets = self.sockets.borrow_mut();
         let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
         socket.close();
-        self.unused_handles.borrow_mut().push(handle).unwrap();
+        let mut unused_handles = self.unused_handles.borrow_mut();
+        if unused_handles.iter().find(|&x| *x == handle).is_none() {
+            unused_handles.push(handle).unwrap();
+        }
         Ok(())
     }
 }

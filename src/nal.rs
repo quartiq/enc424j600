@@ -247,6 +247,12 @@ where
             };
             match result {
                 Ok(num_bytes) => {
+                    // If the buffer is completely filled, close the socket and
+                    // return an error
+                    if num_bytes == 0 {
+                        write_error = true;
+                        break;
+                    }
                     // In case the buffer is filled up, push bytes into ethernet driver
                     if num_bytes != non_queued_bytes.len() {
                         self.update()?;

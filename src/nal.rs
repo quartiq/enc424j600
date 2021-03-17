@@ -194,7 +194,7 @@ where
                 }
             }
         };
-
+        // Blocking connect
         // Loop to wait until the socket is staying established or closed,
         // or the connection attempt has timed out.
         let mut timeout_ms: u32 = 0;
@@ -216,11 +216,13 @@ where
                     return Ok(handle)
                 }
             }
+            
             // Any TCP states other than CLOSED and ESTABLISHED are considered
             // "transient", so this function should keep waiting and let smoltcp poll
             // (e.g. for handling echo reqeust/reply) at the same time.
             timeout_ms += self.update()?;
             self.poll()?;
+
             // Time out, and return the socket for re-connection in the future.
             if timeout_ms > self.connection_timeout_ms {
                 // TODO: Return Err(), but would require changes in quartiq/minimq

@@ -61,6 +61,13 @@ impl <SPI: Transfer<u8>,
         }
     }
 
+    pub fn init(&mut self) -> Result<(), Error> {
+        self.reset()?;
+        self.init_rxbuf()?;
+        self.init_txbuf()?;
+        Ok(())
+    }
+
     pub fn reset(&mut self) -> Result<(), Error> {
         // Write 0x1234 to EUDAST
         self.spi_port.write_reg_16b(spi::addrs::EUDAST, 0x1234)?;

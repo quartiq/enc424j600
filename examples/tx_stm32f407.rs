@@ -29,8 +29,7 @@ use stm32f4xx_hal::{
 };
 type SpiEth = enc424j600::Enc424j600<
     Spi<SPI1, (PA5<Alternate<AF5>>, PA6<Alternate<AF5>>, PA7<Alternate<AF5>>)>,
-    PA4<Output<PushPull>>,
-    fn(u32) -> ()
+    PA4<Output<PushPull>>
 >;
 
 #[rtic::app(device = stm32f4xx_hal::stm32, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
@@ -84,14 +83,12 @@ const APP: () = {
                 Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
                 clocks);
 
-            let delay_ns: fn(u32) -> () = |time_ns| {
-                cortex_m::asm::delay((time_ns*21)/125 + 1)
-            };
-            SpiEth::new(spi_eth_port, spi1_nss, delay_ns)
+            SpiEth::new(spi_eth_port, spi1_nss)
+                .cpu_freq_mhz(168)
         };
 
         // Init
-        match spi_eth.reset() {
+        match spi_eth.reset(&mut delay) {
             Ok(_) => {
                 iprintln!(stim0, "Initializing Ethernet...")
             }

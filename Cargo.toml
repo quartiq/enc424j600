@@ -38,11 +38,11 @@ smoltcp-examples = [
     "smoltcp-phy", "smoltcp/socket-tcp", "smoltcp/ethernet"
 ]
 tx_stm32f407 = [
-    "stm32f4xx-hal/stm32f407", "cortex-m", "cortex-m-rtic",
+    "stm32f4xx-hal/stm32f407", "cortex-m", "cortex-m-rtic", "cortex-m-cpu",
     "panic-itm", "log"
 ]
 tcp_stm32f407 = [
-    "stm32f4xx-hal/stm32f407", "cortex-m", "cortex-m-rt", "cortex-m-rtic",
+    "stm32f4xx-hal/stm32f407", "cortex-m", "cortex-m-rt", "cortex-m-rtic", "cortex-m-cpu",
     "smoltcp-examples", "panic-itm", "log"]
 default = []
 

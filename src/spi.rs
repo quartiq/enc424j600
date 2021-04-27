@@ -18,8 +18,8 @@ pub mod opcodes {
     /// SPI Opcodes
     pub const RCRU: u8 = 0b0010_0000;
     pub const WCRU: u8 = 0b0010_0010;
-    pub const RERXDATA: u8 = 0b0010_1100;   // 8-bit opcode followed by data
-    pub const WEGPDATA: u8 = 0b0010_1010;   // 8-bit opcode followed by data
+    pub const RRXDATA: u8 = 0b0010_1100;    // 8-bit opcode followed by data
+    pub const WGPDATA: u8 = 0b0010_1010;    // 8-bit opcode followed by data
 }
 
 pub mod addrs {
@@ -94,16 +94,14 @@ impl <SPI: Transfer<u8>,
     // Currently requires manual slicing (buf[1..]) for the data read back
     pub fn read_rxdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize)
                          -> Result<(), Error> {
-        let r_valid = self.r_n(buf, opcodes::RERXDATA, data_length)?;
-        Ok(r_valid)
+        self.r_n(buf, opcodes::RRXDATA, data_length)
     }
 
-    // Currenly requires actual data to be stored in buf[1..] instead of buf[0..]
+    // Currently requires actual data to be stored in buf[1..] instead of buf[0..]
     // TODO: Maybe better naming?
     pub fn write_txdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize)
                           -> Result<(), Error> {
-        let w_valid = self.w_n(buf, opcodes::WEGPDATA, data_length)?;
-        Ok(w_valid)
+        self.w_n(buf, opcodes::WGPDATA, data_length)
     }
 
     pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), Error> {

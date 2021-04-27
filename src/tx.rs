@@ -1,13 +1,9 @@
 use crate::RAW_FRAME_LENGTH_MAX;
 
-/// SRAM Addresses
-pub const GPBUFST_DEFAULT: u16 = 0x0000;    // Start of General-Purpose SRAM Buffer
-pub const GPBUFEN_DEFAULT: u16 = 0x5340;    // End of General-Purpose SRAM Buffer == ERXST default
-
 /// Struct for TX Buffer on the hardware
 /// TODO: Should be a singleton
 pub struct TxBuffer {
-    wrap_addr: u16,
+    start_addr: u16,
     // The following two fields are controlled by firmware
     next_addr: u16,
     tail_addr: u16
@@ -16,23 +12,23 @@ pub struct TxBuffer {
 impl TxBuffer {
     pub fn new() -> Self {
         TxBuffer {
-            wrap_addr: GPBUFST_DEFAULT,
-            next_addr: GPBUFST_DEFAULT + 1,
-            tail_addr: GPBUFST_DEFAULT
+            start_addr: 0x0000,
+            next_addr: 0x0001,
+            tail_addr: 0x0000
         }
     }
 
-    pub fn set_wrap_addr(&mut self, addr: u16) {
-        self.wrap_addr = addr;
+    pub fn set_start_addr(&mut self, addr: u16) {
+        self.start_addr = addr;
     }
-    pub fn get_wrap_addr(& self) -> u16{
-        self.wrap_addr
+    pub fn get_start_addr(& self) -> u16{
+        self.start_addr
     }
 
     pub fn set_next_addr(&mut self, addr: u16) {
         self.next_addr = addr;
     }
-    pub fn get_next_addr(& self) -> u16{
+    pub fn get_next_addr(& self) -> u16 {
         self.next_addr
     }
 

@@ -96,7 +96,7 @@ impl <SPI: Transfer<u8>,
 
     pub fn init_rxbuf(&mut self) -> Result<(), Error> {
         // Set ERXST pointer
-        self.spi_port.write_reg_16b(spi::addrs::ERXST, self.rx_buf.get_wrap_addr())?;
+        self.spi_port.write_reg_16b(spi::addrs::ERXST, self.rx_buf.get_start_addr())?;
         // Set ERXTAIL pointer
         self.spi_port.write_reg_16b(spi::addrs::ERXTAIL, self.rx_buf.get_tail_addr())?;
         // Set MAMXFL to maximum number of bytes in each accepted packet
@@ -180,8 +180,11 @@ impl <SPI: Transfer<u8>,
         self.spi_port.read_rxdat(&mut frame_buf, rx_packet.get_frame_length())?;
         rx_packet.copy_frame_from(&frame_buf[1..]);
         // Set ERXTAIL pointer to (next_addr - 2)
-        if self.rx_buf.get_next_addr() > rx::ERXST_DEFAULT {
+        // * Assume head, tail, next and wrap addresses are word-aligned (even)
+        // - If next_addr is at least (start_addr+2), then set tail pointer to the word right before next_addr
+        if self.rx_buf.get_next_addr() > self.rx_buf.get_start_addr() {
             self.spi_port.write_reg_16b(spi::addrs::ERXTAIL, self.rx_buf.get_next_addr() - 2)?;
+        // - Otherwise, next_addr will wrap, so set tail pointer to the last word address of RX buffer
         } else {
             self.spi_port.write_reg_16b(spi::addrs::ERXTAIL, rx::RX_MAX_ADDRESS - 1)?;
         }
@@ -216,8 +219,9 @@ impl <SPI: Transfer<u8>,
         // TODO: Read ETXSTAT to understand Ethernet transmission status
         // (See: Register 9-2, ENC424J600 Data Sheet)
         // Update TX buffer start address
+        // * Assume TX buffer consumes the entire general-purpose SRAM block
         self.tx_buf.set_next_addr((self.tx_buf.get_next_addr() + packet.get_frame_length() as u16) %
-            tx::GPBUFEN_DEFAULT);
+            self.rx_buf.get_start_addr() - self.tx_buf.get_start_addr());
         Ok(())
     }
 }

@@ -11,7 +11,7 @@ pub const RSV_LENGTH: usize = 6;
 /// Struct for RX Buffer on the hardware
 /// TODO: Should be a singleton
 pub struct RxBuffer {
-    wrap_addr: u16,
+    start_addr: u16,
     next_addr: u16,
     tail_addr: u16
 }
@@ -19,23 +19,23 @@ pub struct RxBuffer {
 impl RxBuffer {
     pub fn new() -> Self {
         RxBuffer {
-            wrap_addr: ERXST_DEFAULT,
+            start_addr: ERXST_DEFAULT,
             next_addr: ERXST_DEFAULT,
             tail_addr: ERXTAIL_DEFAULT
         }
     }
 
-    pub fn set_wrap_addr(&mut self, addr: u16) {
-        self.wrap_addr = addr;
+    pub fn set_start_addr(&mut self, addr: u16) {
+        self.start_addr = addr;
     }
-    pub fn get_wrap_addr(& self) -> u16{
-        self.wrap_addr
+    pub fn get_start_addr(& self) -> u16{
+        self.start_addr
     }
 
     pub fn set_next_addr(&mut self, addr: u16) {
         self.next_addr = addr;
     }
-    pub fn get_next_addr(& self) -> u16{
+    pub fn get_next_addr(& self) -> u16 {
         self.next_addr
     }
 

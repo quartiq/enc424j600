@@ -4,6 +4,7 @@ pub mod spi;
 use embedded_hal::{
     blocking::{
         spi::Transfer,
+        delay::DelayUs,
     },
     digital::v2::OutputPin,
 };
@@ -61,14 +62,14 @@ impl <SPI: Transfer<u8>,
         }
     }
 
-    pub fn init(&mut self) -> Result<(), Error> {
-        self.reset()?;
+    pub fn init(&mut self, delay: &mut impl DelayUs<u16>) -> Result<(), Error> {
+        self.reset(delay)?;
         self.init_rxbuf()?;
         self.init_txbuf()?;
         Ok(())
     }
 
-    pub fn reset(&mut self) -> Result<(), Error> {
+    pub fn reset(&mut self, delay: &mut impl DelayUs<u16>) -> Result<(), Error> {
         // Write 0x1234 to EUDAST
         self.spi_port.write_reg_16b(spi::addrs::EUDAST, 0x1234)?;
         // Verify that EUDAST is 0x1234
@@ -83,13 +84,13 @@ impl <SPI: Transfer<u8>,
         }
         // Issue system reset - set ETHRST (ECON2<4>) to 1
         self.spi_port.send_opcode(spi::opcodes::SETETHRST)?;
-        self.spi_port.delay_us(25);
+        delay.delay_us(25);
         // Verify that EUDAST is 0x0000
         eudast = self.spi_port.read_reg_16b(spi::addrs::EUDAST)?;
         if eudast != 0x0000 {
             return Err(Error::RegisterError)
         }
-        self.spi_port.delay_us(256);
+        delay.delay_us(256);
         Ok(())
     }
 

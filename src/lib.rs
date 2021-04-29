@@ -20,15 +20,10 @@ pub mod nal;
 /// Max raw frame array size
 pub const RAW_FRAME_LENGTH_MAX: usize = 1518;
 
+/// Trait representing PHY layer of ENC424J600
 pub trait EthController {
-    fn init_dev(&mut self) -> Result<(), EthControllerError>;
-    fn init_rxbuf(&mut self) -> Result<(), EthControllerError>;
-    fn init_txbuf(&mut self) -> Result<(), EthControllerError>;
     fn receive_next(&mut self, is_poll: bool) -> Result<rx::RxPacket, EthControllerError>;
     fn send_raw_packet(&mut self, packet: &tx::TxPacket) -> Result<(), EthControllerError>;
-    fn set_promiscuous(&mut self) -> Result<(), EthControllerError>;
-    fn read_from_mac(&mut self, mac: &mut [u8]) -> Result<(), EthControllerError>;
-    fn write_mac_address(&mut self, mac: &[u8]) -> Result<(), EthControllerError>;
 }
 
 /// TODO: Improve these error types
@@ -65,12 +60,8 @@ impl <SPI: Transfer<u8>,
             tx_buf: tx::TxBuffer::new()
         }
     }
-}
 
-impl <SPI: Transfer<u8>,
-      NSS: OutputPin,
-      F: FnMut(u32) -> ()> EthController for SpiEth<SPI, NSS, F> {
-    fn init_dev(&mut self) -> Result<(), EthControllerError> {
+    pub fn init_dev(&mut self) -> Result<(), EthControllerError> {
         // Write 0x1234 to EUDAST
         self.spi_port.write_reg_16b(spi::addrs::EUDAST, 0x1234)?;
         // Verify that EUDAST is 0x1234
@@ -96,7 +87,7 @@ impl <SPI: Transfer<u8>,
         Ok(())
     }
 
-    fn init_rxbuf(&mut self) -> Result<(), EthControllerError> {
+    pub fn init_rxbuf(&mut self) -> Result<(), EthControllerError> {
         // Set ERXST pointer
         self.spi_port.write_reg_16b(spi::addrs::ERXST, self.rx_buf.get_wrap_addr())?;
         // Set ERXTAIL pointer
@@ -109,12 +100,47 @@ impl <SPI: Transfer<u8>,
         Ok(())
     }
 
-    fn init_txbuf(&mut self) -> Result<(), EthControllerError> {
+    pub fn init_txbuf(&mut self) -> Result<(), EthControllerError> {
         // Set EGPWRPT pointer
         self.spi_port.write_reg_16b(spi::addrs::EGPWRPT, 0x0000)?;
         Ok(())
     }
 
+    /// Set controller to Promiscuous Mode
+    pub fn set_promiscuous(&mut self) -> Result<(), EthControllerError> {
+        // From Section 10.12, ENC424J600 Data Sheet:
+        // "To accept all incoming frames regardless of content (Promiscuous mode),
+        // set the CRCEN, RUNTEN, UCEN, NOTMEEN and MCEN bits."
+        let erxfcon_lo = self.spi_port.read_reg_8b(spi::addrs::ERXFCON)?;
+        self.spi_port.write_reg_8b(spi::addrs::ERXFCON, 0b0101_1110 | (erxfcon_lo & 0b1010_0001))?;
+        Ok(())
+    }
+
+    /// Read MAC to [u8; 6]
+    pub fn read_from_mac(&mut self, mac: &mut [u8]) -> Result<(), EthControllerError> {
+        mac[0] = self.spi_port.read_reg_8b(spi::addrs::MAADR1)?;
+        mac[1] = self.spi_port.read_reg_8b(spi::addrs::MAADR1 + 1)?;
+        mac[2] = self.spi_port.read_reg_8b(spi::addrs::MAADR2)?;
+        mac[3] = self.spi_port.read_reg_8b(spi::addrs::MAADR2 + 1)?;
+        mac[4] = self.spi_port.read_reg_8b(spi::addrs::MAADR3)?;
+        mac[5] = self.spi_port.read_reg_8b(spi::addrs::MAADR3 + 1)?;
+        Ok(())
+    }
+
+    pub fn write_mac_address(&mut self, mac: &[u8]) -> Result<(), EthControllerError> {
+        self.spi_port.write_reg_8b(spi::addrs::MAADR1, mac[0])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR1 + 1, mac[1])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR2, mac[2])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR2 + 1, mac[3])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR3, mac[4])?;
+        self.spi_port.write_reg_8b(spi::addrs::MAADR3 + 1, mac[5])?;
+        Ok(())
+    }
+}
+
+impl <SPI: Transfer<u8>,
+      NSS: OutputPin,
+      F: FnMut(u32) -> ()> EthController for SpiEth<SPI, NSS, F> {
     /// Receive the next packet and return it
     /// Set is_poll to true for returning until PKTIF is set;
     /// Set is_poll to false for returning Err when PKTIF is not set
@@ -185,37 +211,6 @@ impl <SPI: Transfer<u8>,
         // Update TX buffer start address
         self.tx_buf.set_next_addr((self.tx_buf.get_next_addr() + packet.get_frame_length() as u16) %
             tx::GPBUFEN_DEFAULT);
-        Ok(())
-    }
-
-    /// Set controller to Promiscuous Mode
-    fn set_promiscuous(&mut self) -> Result<(), EthControllerError> {
-        // From Section 10.12, ENC424J600 Data Sheet:
-        // "To accept all incoming frames regardless of content (Promiscuous mode),
-        // set the CRCEN, RUNTEN, UCEN, NOTMEEN and MCEN bits."
-        let erxfcon_lo = self.spi_port.read_reg_8b(spi::addrs::ERXFCON)?;
-        self.spi_port.write_reg_8b(spi::addrs::ERXFCON, 0b0101_1110 | (erxfcon_lo & 0b1010_0001))?;
-        Ok(())
-    }
-
-    /// Read MAC to [u8; 6]
-    fn read_from_mac(&mut self, mac: &mut [u8]) -> Result<(), EthControllerError> {
-        mac[0] = self.spi_port.read_reg_8b(spi::addrs::MAADR1)?;
-        mac[1] = self.spi_port.read_reg_8b(spi::addrs::MAADR1 + 1)?;
-        mac[2] = self.spi_port.read_reg_8b(spi::addrs::MAADR2)?;
-        mac[3] = self.spi_port.read_reg_8b(spi::addrs::MAADR2 + 1)?;
-        mac[4] = self.spi_port.read_reg_8b(spi::addrs::MAADR3)?;
-        mac[5] = self.spi_port.read_reg_8b(spi::addrs::MAADR3 + 1)?;
-        Ok(())
-    }
-
-    fn write_mac_address(&mut self, mac: &[u8]) -> Result<(), EthControllerError> {
-        self.spi_port.write_reg_8b(spi::addrs::MAADR1, mac[0])?;
-        self.spi_port.write_reg_8b(spi::addrs::MAADR1 + 1, mac[1])?;
-        self.spi_port.write_reg_8b(spi::addrs::MAADR2, mac[2])?;
-        self.spi_port.write_reg_8b(spi::addrs::MAADR2 + 1, mac[3])?;
-        self.spi_port.write_reg_8b(spi::addrs::MAADR3, mac[4])?;
-        self.spi_port.write_reg_8b(spi::addrs::MAADR3 + 1, mac[5])?;
         Ok(())
     }
 }

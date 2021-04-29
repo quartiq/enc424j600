@@ -1,5 +1,5 @@
 use crate::{
-    EthController, tx, RAW_FRAME_LENGTH_MAX
+    EthPhy, tx, RAW_FRAME_LENGTH_MAX
 };
 use core::cell;
 use smoltcp::{
@@ -8,25 +8,25 @@ use smoltcp::{
     Error
 };
 
-pub struct SmoltcpDevice<EC: EthController> {
-    pub eth_controller: cell::RefCell<EC>,
+pub struct SmoltcpDevice<E: EthPhy> {
+    pub eth_phy: cell::RefCell<E>,
     rx_packet_buf: [u8; RAW_FRAME_LENGTH_MAX],
     tx_packet_buf: [u8; RAW_FRAME_LENGTH_MAX]
 }
 
-impl<EC: EthController> SmoltcpDevice<EC> {
-    pub fn new(eth_controller: EC) -> Self {
+impl<E: EthPhy> SmoltcpDevice<E> {
+    pub fn new(eth_phy: E) -> Self {
         SmoltcpDevice {
-            eth_controller: cell::RefCell::new(eth_controller),
+            eth_phy: cell::RefCell::new(eth_phy),
             rx_packet_buf: [0; RAW_FRAME_LENGTH_MAX],
             tx_packet_buf: [0; RAW_FRAME_LENGTH_MAX]
         }
     }
 }
 
-impl<'a, EC: 'a + EthController> Device<'a> for SmoltcpDevice<EC> {
+impl<'a, E: 'a + EthPhy> Device<'a> for SmoltcpDevice<E> {
     type RxToken = EthRxToken<'a>;
-    type TxToken = EthTxToken<'a, EC>;
+    type TxToken = EthTxToken<'a, E>;
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
@@ -35,8 +35,8 @@ impl<'a, EC: 'a + EthController> Device<'a> for SmoltcpDevice<EC> {
     }
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        let self_p = (&mut *self) as *mut SmoltcpDevice<EC>;
-        match self.eth_controller.borrow_mut().receive_next(false) {
+        let self_p = (&mut *self) as *mut SmoltcpDevice<E>;
+        match self.eth_phy.borrow_mut().recv_packet(false) {
             Ok(rx_packet) => {
                 // Write received packet to RX packet buffer
                 rx_packet.write_frame_to(&mut self.rx_packet_buf);
@@ -57,7 +57,7 @@ impl<'a, EC: 'a + EthController> Device<'a> for SmoltcpDevice<EC> {
     }
 
     fn transmit(&'a mut self) -> Option<Self::TxToken> {
-        let self_p = (&mut *self) as *mut SmoltcpDevice<EC>;
+        let self_p = (&mut *self) as *mut SmoltcpDevice<E>;
         // Construct a blank TxToken
         let tx_token = EthTxToken {
             buf: &mut self.tx_packet_buf,
@@ -81,12 +81,12 @@ impl<'a> RxToken for EthRxToken<'a> {
     }
 }
 
-pub struct EthTxToken<'a, EC: EthController> {
+pub struct EthTxToken<'a, E: EthPhy> {
     buf: &'a mut [u8],
-    dev: *mut SmoltcpDevice<EC>
+    dev: *mut SmoltcpDevice<E>
 }
 
-impl<'a, EC: 'a + EthController> TxToken for EthTxToken<'a, EC> {
+impl<'a, E: 'a + EthPhy> TxToken for EthTxToken<'a, E> {
     fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> Result<R, Error>
     where
         F: FnOnce(&mut [u8]) -> Result<R, Error>,
@@ -97,10 +97,10 @@ impl<'a, EC: 'a + EthController> TxToken for EthTxToken<'a, EC> {
         // Update frame length and write frame bytes
         tx_packet.update_frame(&mut self.buf[..len], len);
         // Send the packet as raw
-        let eth_controller = unsafe {
-            &mut (*self.dev).eth_controller
+        let eth_phy = unsafe {
+            &mut (*self.dev).eth_phy
         };
-        match eth_controller.borrow_mut().send_raw_packet(&tx_packet) {
+        match eth_phy.borrow_mut().send_packet(&tx_packet) {
             Ok(_) => { result },
             Err(_) => Err(Error::Exhausted)
         }

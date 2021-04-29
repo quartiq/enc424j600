@@ -59,7 +59,7 @@ pub struct SpiPort<SPI: Transfer<u8>,
     delay_ns: F,
 }
 
-pub enum SpiPortError {
+pub enum Error {
     TransferError
 }
 
@@ -78,13 +78,13 @@ impl <SPI: Transfer<u8>,
         }
     }
 
-    pub fn read_reg_8b(&mut self, addr: u8) -> Result<u8, SpiPortError> {
+    pub fn read_reg_8b(&mut self, addr: u8) -> Result<u8, Error> {
         // Using RCRU instruction to read using unbanked (full) address
         let r_data = self.rw_addr_u8(opcodes::RCRU, addr, 0)?;
         Ok(r_data)
     }
 
-    pub fn read_reg_16b(&mut self, lo_addr: u8) -> Result<u16, SpiPortError> {
+    pub fn read_reg_16b(&mut self, lo_addr: u8) -> Result<u16, Error> {
         let r_data_lo = self.read_reg_8b(lo_addr)?;
         let r_data_hi = self.read_reg_8b(lo_addr + 1)?;
         // Combine top and bottom 8-bit to return 16-bit
@@ -93,7 +93,7 @@ impl <SPI: Transfer<u8>,
 
     // Currently requires manual slicing (buf[1..]) for the data read back
     pub fn read_rxdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize)
-                         -> Result<(), SpiPortError> {
+                         -> Result<(), Error> {
         let r_valid = self.r_n(buf, opcodes::RERXDATA, data_length)?;
         Ok(r_valid)
     }
@@ -101,19 +101,19 @@ impl <SPI: Transfer<u8>,
     // Currenly requires actual data to be stored in buf[1..] instead of buf[0..]
     // TODO: Maybe better naming?
     pub fn write_txdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize)
-                          -> Result<(), SpiPortError> {
+                          -> Result<(), Error> {
         let w_valid = self.w_n(buf, opcodes::WEGPDATA, data_length)?;
         Ok(w_valid)
     }
 
-    pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), SpiPortError> {
+    pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), Error> {
         // TODO: addr should be separated from w_data
         // Using WCRU instruction to write using unbanked (full) address
         self.rw_addr_u8(opcodes::WCRU, addr, data)?;
         Ok(())
     }
 
-    pub fn write_reg_16b(&mut self, lo_addr: u8, data: u16) -> Result<(), SpiPortError> {
+    pub fn write_reg_16b(&mut self, lo_addr: u8, data: u16) -> Result<(), Error> {
         self.write_reg_8b(lo_addr, (data & 0xff) as u8)?;
         self.write_reg_8b(lo_addr + 1, ((data & 0xff00) >> 8) as u8)?;
         Ok(())
@@ -127,7 +127,7 @@ impl <SPI: Transfer<u8>,
     // TODO: (Make data read/write as reference to array)
     // Currently requires 1-byte addr, read/write data is only 1-byte
     fn rw_addr_u8(&mut self, opcode: u8, addr: u8, data: u8)
-                 -> Result<u8, SpiPortError> {
+                 -> Result<u8, Error> {
         // Enable chip select
         self.nss.set_low();
         // Start writing to SLAVE
@@ -150,7 +150,7 @@ impl <SPI: Transfer<u8>,
                 (self.delay_ns)(60);
                 self.nss.set_high();
                 (self.delay_ns)(30);
-                Err(SpiPortError::TransferError)
+                Err(Error::TransferError)
             }
         }
     }
@@ -161,7 +161,7 @@ impl <SPI: Transfer<u8>,
     // Note: buf must be at least (data_length + 1)-byte long
     // TODO: Check and raise error for array size < (data_length + 1)
     fn r_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize)
-              -> Result<(), SpiPortError> {
+              -> Result<(), Error> {
         // Enable chip select
         self.nss.set_low();
         // Start writing to SLAVE
@@ -176,7 +176,7 @@ impl <SPI: Transfer<u8>,
             Err(_) => {
                 // Disable chip select
                 self.nss.set_high();
-                Err(SpiPortError::TransferError)
+                Err(Error::TransferError)
             }
         }
     }
@@ -184,7 +184,7 @@ impl <SPI: Transfer<u8>,
     // Note: buf[0] is currently reserved for opcode to overwrite
     // TODO: Actual data should start from buf[0], not buf[1]
     fn w_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize)
-              -> Result<(), SpiPortError> {
+              -> Result<(), Error> {
         // Enable chip select
         self.nss.set_low();
         // Start writing to SLAVE
@@ -200,7 +200,7 @@ impl <SPI: Transfer<u8>,
             Err(_) => {
                 // Disable chip select
                 self.nss.set_high();
-                Err(SpiPortError::TransferError)
+                Err(Error::TransferError)
             }
         }
     }

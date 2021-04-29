@@ -21,30 +21,30 @@ pub mod nal;
 pub const RAW_FRAME_LENGTH_MAX: usize = 1518;
 
 /// Trait representing PHY layer of ENC424J600
-pub trait EthController {
-    fn receive_next(&mut self, is_poll: bool) -> Result<rx::RxPacket, EthControllerError>;
-    fn send_raw_packet(&mut self, packet: &tx::TxPacket) -> Result<(), EthControllerError>;
+pub trait EthPhy {
+    fn recv_packet(&mut self, is_poll: bool) -> Result<rx::RxPacket, Error>;
+    fn send_packet(&mut self, packet: &tx::TxPacket) -> Result<(), Error>;
 }
 
 /// TODO: Improve these error types
 #[derive(Debug)]
-pub enum EthControllerError {
+pub enum Error {
     SpiPortError,
-    GeneralError,
+    RegisterError,
     // TODO: Better name?
     NoRxPacketError
 }
 
-impl From<spi::SpiPortError> for EthControllerError {
-    fn from(_: spi::SpiPortError) -> EthControllerError {
-        EthControllerError::SpiPortError
+impl From<spi::Error> for Error {
+    fn from(_: spi::Error) -> Error {
+        Error::SpiPortError
     }
 }
 
-/// Ethernet controller using SPI interface
-pub struct SpiEth<SPI: Transfer<u8>,
-                  NSS: OutputPin,
-                  F: FnMut(u32) -> ()> {
+/// ENC424J600 controller in SPI mode
+pub struct Enc424j600<SPI: Transfer<u8>,
+                      NSS: OutputPin,
+                      F: FnMut(u32) -> ()> {
     spi_port: spi::SpiPort<SPI, NSS, F>,
     rx_buf: rx::RxBuffer,
     tx_buf: tx::TxBuffer
@@ -52,22 +52,22 @@ pub struct SpiEth<SPI: Transfer<u8>,
 
 impl <SPI: Transfer<u8>,
       NSS: OutputPin,
-      F: FnMut(u32) -> ()> SpiEth<SPI, NSS, F> {
+      F: FnMut(u32) -> ()> Enc424j600<SPI, NSS, F> {
     pub fn new(spi: SPI, nss: NSS, delay_ns: F) -> Self {
-        SpiEth {
+        Enc424j600 {
             spi_port: spi::SpiPort::new(spi, nss, delay_ns),
             rx_buf: rx::RxBuffer::new(),
             tx_buf: tx::TxBuffer::new()
         }
     }
 
-    pub fn init_dev(&mut self) -> Result<(), EthControllerError> {
+    pub fn reset(&mut self) -> Result<(), Error> {
         // Write 0x1234 to EUDAST
         self.spi_port.write_reg_16b(spi::addrs::EUDAST, 0x1234)?;
         // Verify that EUDAST is 0x1234
         let mut eudast = self.spi_port.read_reg_16b(spi::addrs::EUDAST)?;
         if eudast != 0x1234 {
-            return Err(EthControllerError::GeneralError)
+            return Err(Error::RegisterError)
         }
         // Poll CLKRDY (ESTAT<12>) to check if it is set
         loop {
@@ -81,13 +81,13 @@ impl <SPI: Transfer<u8>,
         // Verify that EUDAST is 0x0000
         eudast = self.spi_port.read_reg_16b(spi::addrs::EUDAST)?;
         if eudast != 0x0000 {
-            return Err(EthControllerError::GeneralError)
+            return Err(Error::RegisterError)
         }
         self.spi_port.delay_us(256);
         Ok(())
     }
 
-    pub fn init_rxbuf(&mut self) -> Result<(), EthControllerError> {
+    pub fn init_rxbuf(&mut self) -> Result<(), Error> {
         // Set ERXST pointer
         self.spi_port.write_reg_16b(spi::addrs::ERXST, self.rx_buf.get_wrap_addr())?;
         // Set ERXTAIL pointer
@@ -100,14 +100,14 @@ impl <SPI: Transfer<u8>,
         Ok(())
     }
 
-    pub fn init_txbuf(&mut self) -> Result<(), EthControllerError> {
+    pub fn init_txbuf(&mut self) -> Result<(), Error> {
         // Set EGPWRPT pointer
         self.spi_port.write_reg_16b(spi::addrs::EGPWRPT, 0x0000)?;
         Ok(())
     }
 
     /// Set controller to Promiscuous Mode
-    pub fn set_promiscuous(&mut self) -> Result<(), EthControllerError> {
+    pub fn set_promiscuous(&mut self) -> Result<(), Error> {
         // From Section 10.12, ENC424J600 Data Sheet:
         // "To accept all incoming frames regardless of content (Promiscuous mode),
         // set the CRCEN, RUNTEN, UCEN, NOTMEEN and MCEN bits."
@@ -117,7 +117,7 @@ impl <SPI: Transfer<u8>,
     }
 
     /// Read MAC to [u8; 6]
-    pub fn read_from_mac(&mut self, mac: &mut [u8]) -> Result<(), EthControllerError> {
+    pub fn read_mac_addr(&mut self, mac: &mut [u8]) -> Result<(), Error> {
         mac[0] = self.spi_port.read_reg_8b(spi::addrs::MAADR1)?;
         mac[1] = self.spi_port.read_reg_8b(spi::addrs::MAADR1 + 1)?;
         mac[2] = self.spi_port.read_reg_8b(spi::addrs::MAADR2)?;
@@ -127,7 +127,7 @@ impl <SPI: Transfer<u8>,
         Ok(())
     }
 
-    pub fn write_mac_address(&mut self, mac: &[u8]) -> Result<(), EthControllerError> {
+    pub fn write_mac_addr(&mut self, mac: &[u8]) -> Result<(), Error> {
         self.spi_port.write_reg_8b(spi::addrs::MAADR1, mac[0])?;
         self.spi_port.write_reg_8b(spi::addrs::MAADR1 + 1, mac[1])?;
         self.spi_port.write_reg_8b(spi::addrs::MAADR2, mac[2])?;
@@ -140,17 +140,17 @@ impl <SPI: Transfer<u8>,
 
 impl <SPI: Transfer<u8>,
       NSS: OutputPin,
-      F: FnMut(u32) -> ()> EthController for SpiEth<SPI, NSS, F> {
+      F: FnMut(u32) -> ()> EthPhy for Enc424j600<SPI, NSS, F> {
     /// Receive the next packet and return it
     /// Set is_poll to true for returning until PKTIF is set;
     /// Set is_poll to false for returning Err when PKTIF is not set
-    fn receive_next(&mut self, is_poll: bool) -> Result<rx::RxPacket, EthControllerError> {
+    fn recv_packet(&mut self, is_poll: bool) -> Result<rx::RxPacket, Error> {
         // Poll PKTIF (EIR<4>) to check if it is set
         loop {
             let eir = self.spi_port.read_reg_16b(spi::addrs::EIR)?;
             if eir & 0x40 == 0x40 { break }
             if !is_poll {
-                return Err(EthControllerError::NoRxPacketError)
+                return Err(Error::NoRxPacketError)
             }
         }
         // Set ERXRDPT pointer to next_addr
@@ -186,7 +186,7 @@ impl <SPI: Transfer<u8>,
     }
 
     /// Send an established packet
-    fn send_raw_packet(&mut self, packet: &tx::TxPacket) -> Result<(), EthControllerError> {
+    fn send_packet(&mut self, packet: &tx::TxPacket) -> Result<(), Error> {
         // Set EGPWRPT pointer to next_addr
         self.spi_port.write_reg_16b(spi::addrs::EGPWRPT, self.tx_buf.get_next_addr())?;
         // Copy packet data to SRAM Buffer

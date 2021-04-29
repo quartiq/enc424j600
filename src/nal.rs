@@ -24,7 +24,7 @@ pub enum NetworkError {
 pub type NetworkInterface<SPI, NSS> = net::iface::EthernetInterface<
     'static,
     crate::smoltcp_phy::SmoltcpDevice<
-        crate::SpiEth<SPI, NSS, fn(u32)>
+        crate::Enc424j600<SPI, NSS, fn(u32)>
     >,
 >;
 

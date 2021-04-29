@@ -17,8 +17,7 @@ use stm32f4xx_hal::{
     spi::Spi,
     time::Hertz
 };
-use enc424j600;
-use enc424j600::EthController;
+use enc424j600::EthPhy;
 
 ///
 use stm32f4xx_hal::{
@@ -28,15 +27,16 @@ use stm32f4xx_hal::{
         Alternate, AF5, Output, PushPull
     },
 };
-type BoosterSpiEth = enc424j600::SpiEth<
+type SpiEth = enc424j600::Enc424j600<
     Spi<SPI1, (PA5<Alternate<AF5>>, PA6<Alternate<AF5>>, PA7<Alternate<AF5>>)>,
     PA4<Output<PushPull>>,
-    fn(u32)>;
+    fn(u32) -> ()
+>;
 
 #[rtic::app(device = stm32f4xx_hal::stm32, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
 const APP: () = {
     struct Resources {
-        spi_eth: BoosterSpiEth,
+        spi_eth: SpiEth,
         delay: Delay,
         itm: ITM,
     }
@@ -87,11 +87,11 @@ const APP: () = {
             let delay_ns: fn(u32) -> () = |time_ns| {
                 cortex_m::asm::delay((time_ns*21)/125 + 1)
             };
-            enc424j600::SpiEth::new(spi_eth_port, spi1_nss, delay_ns)
+            SpiEth::new(spi_eth_port, spi1_nss, delay_ns)
         };
 
         // Init
-        match spi_eth.init_dev() {
+        match spi_eth.reset() {
             Ok(_) => {
                 iprintln!(stim0, "Initializing Ethernet...")
             }
@@ -102,7 +102,7 @@ const APP: () = {
 
         // Read MAC
         let mut eth_mac_addr: [u8; 6] = [0; 6];
-        spi_eth.read_from_mac(&mut eth_mac_addr);
+        spi_eth.read_mac_addr(&mut eth_mac_addr);
         for i in 0..6 {
             let byte = eth_mac_addr[i];
             match i {
@@ -157,7 +157,7 @@ const APP: () = {
                     _ => ()
                 };
             }
-            c.resources.spi_eth.send_raw_packet(&eth_tx_packet);
+            c.resources.spi_eth.send_packet(&eth_tx_packet);
             iprintln!(stim0, "Packet sent");
             c.resources.delay.delay_ms(100_u32);
         }

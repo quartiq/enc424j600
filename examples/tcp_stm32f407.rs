@@ -17,8 +17,7 @@ use stm32f4xx_hal::{
     spi::Spi,
     time::Hertz
 };
-use enc424j600;
-use enc424j600::{smoltcp_phy, EthController};
+use enc424j600::smoltcp_phy;
 
 use smoltcp::wire::{
     EthernetAddress, IpAddress, IpCidr, Ipv6Cidr
@@ -78,7 +77,7 @@ use stm32f4xx_hal::{
         Alternate, AF5, Output, PushPull
     }
 };
-type BoosterSpiEth = enc424j600::SpiEth<
+type SpiEth = enc424j600::Enc424j600<
     Spi<SPI1, (PA5<Alternate<AF5>>, PA6<Alternate<AF5>>, PA7<Alternate<AF5>>)>,
     PA4<Output<PushPull>>,
     fn(u32) -> ()
@@ -102,7 +101,7 @@ const APP: () = {
     struct Resources {
         eth_iface: EthernetInterface<
             'static,
-            smoltcp_phy::SmoltcpDevice<BoosterSpiEth>>,
+            smoltcp_phy::SmoltcpDevice<SpiEth>>,
         itm: ITM
     }
 
@@ -157,11 +156,11 @@ const APP: () = {
                 let delay_ns_fp: fn(u32) -> () = |time_ns| {
                     cortex_m::asm::delay((time_ns*21)/125 + 1)
                 };
-                enc424j600::SpiEth::new(spi_eth_port, spi1_nss, delay_ns_fp)
+                SpiEth::new(spi_eth_port, spi1_nss, delay_ns_fp)
             };
 
             // Init controller
-            match spi_eth.init_dev() {
+            match spi_eth.reset() {
                 Ok(_) => {
                     iprintln!(stim0, "Initializing Ethernet...")
                 }
@@ -172,7 +171,7 @@ const APP: () = {
 
             // Read MAC
             let mut eth_mac_addr: [u8; 6] = [0; 6];
-            spi_eth.read_from_mac(&mut eth_mac_addr);
+            spi_eth.read_mac_addr(&mut eth_mac_addr);
             for i in 0..6 {
                 let byte = eth_mac_addr[i];
                 match i {

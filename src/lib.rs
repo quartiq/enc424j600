@@ -81,9 +81,8 @@ impl <SPI: Transfer<u8>,
             let estat = self.spi_port.read_reg_16b(spi::addrs::ESTAT)?;
             if estat & 0x1000 == 0x1000 { break }
         }
-        // Set ETHRST (ECON2<4>) to 1
-        let econ2 = self.spi_port.read_reg_8b(spi::addrs::ECON2)?;
-        self.spi_port.write_reg_8b(spi::addrs::ECON2, 0x10 | (econ2 & 0b11101111))?;
+        // Issue system reset - set ETHRST (ECON2<4>) to 1
+        self.spi_port.send_opcode(spi::opcodes::SETETHRST)?;
         self.spi_port.delay_us(25);
         // Verify that EUDAST is 0x0000
         eudast = self.spi_port.read_reg_16b(spi::addrs::EUDAST)?;
@@ -101,9 +100,8 @@ impl <SPI: Transfer<u8>,
         self.spi_port.write_reg_16b(spi::addrs::ERXTAIL, self.rx_buf.get_tail_addr())?;
         // Set MAMXFL to maximum number of bytes in each accepted packet
         self.spi_port.write_reg_16b(spi::addrs::MAMXFL, RAW_FRAME_LENGTH_MAX as u16)?;
-        // Enable RXEN (ECON1<0>)
-        let econ1 = self.spi_port.read_reg_16b(spi::addrs::ECON1)?;
-        self.spi_port.write_reg_16b(spi::addrs::ECON1, 0x1 | (econ1 & 0xfffe))?;
+        // Enable RX - set RXEN (ECON1<0>) to 1
+        self.spi_port.send_opcode(spi::opcodes::ENABLERX)?;
         Ok(())
     }
 
@@ -188,9 +186,8 @@ impl <SPI: Transfer<u8>,
         } else {
             self.spi_port.write_reg_16b(spi::addrs::ERXTAIL, rx::RX_MAX_ADDRESS - 1)?;
         }
-        // Set PKTDEC (ECON1<88>) to decrement PKTCNT
-        let econ1_hi = self.spi_port.read_reg_8b(spi::addrs::ECON1 + 1)?;
-        self.spi_port.write_reg_8b(spi::addrs::ECON1 + 1, 0x01 | (econ1_hi & 0xfe))?;
+        // Decrement PKTCNT - set PKTDEC (ECON1<8>)
+        self.spi_port.send_opcode(spi::opcodes::SETPKTDEC)?;
         // Return the RxPacket
         Ok(rx_packet)
     }
@@ -208,12 +205,11 @@ impl <SPI: Transfer<u8>,
         self.spi_port.write_reg_16b(spi::addrs::ETXST, self.tx_buf.get_next_addr())?;
         // Set ETXLEN to packet length
         self.spi_port.write_reg_16b(spi::addrs::ETXLEN, packet.get_frame_length() as u16)?;
-        // Set TXRTS (ECON1<1>) to start transmission
-        let mut econ1_lo = self.spi_port.read_reg_8b(spi::addrs::ECON1)?;
-        self.spi_port.write_reg_8b(spi::addrs::ECON1, 0x02 | (econ1_lo & 0xfd))?;
+        // Send packet - set TXRTS (ECON1<1>) to start transmission
+        self.spi_port.send_opcode(spi::opcodes::SETTXRTS)?;
         // Poll TXRTS (ECON1<1>) to check if it is reset
         loop {
-            econ1_lo = self.spi_port.read_reg_8b(spi::addrs::ECON1)?;
+            let econ1_lo = self.spi_port.read_reg_8b(spi::addrs::ECON1)?;
             if econ1_lo & 0x02 == 0 { break }
         }
         // TODO: Read ETXSTAT to understand Ethernet transmission status

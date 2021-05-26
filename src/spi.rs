@@ -15,7 +15,17 @@ pub mod interfaces {
 }
 
 pub mod opcodes {
-    /// SPI Opcodes
+    /// 1-byte Instructions
+    pub const SETETHRST: u8 = 0b1100_1010;
+    pub const SETPKTDEC: u8 = 0b1100_1100;
+    pub const SETTXRTS: u8 = 0b1101_0100;
+    pub const ENABLERX: u8 = 0b1110_1000;
+    /// 3-byte Instructions
+    pub const WRXRDPT: u8 = 0b0110_0100;    // 8-bit opcode followed by data
+    pub const RRXRDPT: u8 = 0b0110_0110;    // 8-bit opcode followed by data
+    pub const WGPWRPT: u8 = 0b0110_1100;    // 8-bit opcode followed by data
+    pub const RGPWRPT: u8 = 0b0110_1110;    // 8-bit opcode followed by data
+    /// N-byte Instructions
     pub const RCRU: u8 = 0b0010_0000;
     pub const WCRU: u8 = 0b0010_0010;
     pub const RRXDATA: u8 = 0b0010_1100;    // 8-bit opcode followed by data
@@ -60,6 +70,7 @@ pub struct SpiPort<SPI: Transfer<u8>,
 }
 
 pub enum Error {
+    OpcodeError,
     TransferError
 }
 
@@ -85,23 +96,38 @@ impl <SPI: Transfer<u8>,
     }
 
     pub fn read_reg_16b(&mut self, lo_addr: u8) -> Result<u16, Error> {
-        let r_data_lo = self.read_reg_8b(lo_addr)?;
-        let r_data_hi = self.read_reg_8b(lo_addr + 1)?;
-        // Combine top and bottom 8-bit to return 16-bit
-        Ok(((r_data_hi as u16) << 8) | r_data_lo as u16)
+        match lo_addr {
+            addrs::ERXRDPT | addrs::EGPWRPT => {
+                let mut buf: [u8; 3] = [0; 3];
+                self.rw_n(
+                    &mut buf, match lo_addr {
+                        addrs::ERXRDPT => opcodes::RRXRDPT,
+                        addrs::EGPWRPT => opcodes::RGPWRPT,
+                        _ => unreachable!()
+                    }, 2
+                )?;
+                Ok((buf[2] as u16) << 8 | buf[1] as u16)
+            }
+            _ => {
+                let r_data_lo = self.read_reg_8b(lo_addr)?;
+                let r_data_hi = self.read_reg_8b(lo_addr + 1)?;
+                // Combine top and bottom 8-bit to return 16-bit
+                Ok(((r_data_hi as u16) << 8) | r_data_lo as u16)
+            }
+        }
     }
 
     // Currently requires manual slicing (buf[1..]) for the data read back
     pub fn read_rxdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize)
                          -> Result<(), Error> {
-        self.r_n(buf, opcodes::RRXDATA, data_length)
+        self.rw_n(buf, opcodes::RRXDATA, data_length)
     }
 
     // Currently requires actual data to be stored in buf[1..] instead of buf[0..]
     // TODO: Maybe better naming?
     pub fn write_txdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize)
                           -> Result<(), Error> {
-        self.w_n(buf, opcodes::WGPDATA, data_length)
+        self.rw_n(buf, opcodes::WGPDATA, data_length)
     }
 
     pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), Error> {
@@ -112,9 +138,36 @@ impl <SPI: Transfer<u8>,
     }
 
     pub fn write_reg_16b(&mut self, lo_addr: u8, data: u16) -> Result<(), Error> {
-        self.write_reg_8b(lo_addr, (data & 0xff) as u8)?;
-        self.write_reg_8b(lo_addr + 1, ((data & 0xff00) >> 8) as u8)?;
-        Ok(())
+        match lo_addr {
+            addrs::ERXRDPT | addrs::EGPWRPT => {
+                let mut buf: [u8; 3] = [0; 3];
+                buf[1] = data as u8 & 8;
+                buf[2] = (data >> 8) as u8 & 8;
+                self.rw_n(
+                    &mut buf, match lo_addr {
+                        addrs::ERXRDPT => opcodes::WRXRDPT,
+                        addrs::EGPWRPT => opcodes::WGPWRPT,
+                        _ => unreachable!()
+                    }, 2
+                )
+            }
+            _ => {
+                self.write_reg_8b(lo_addr, (data & 0xff) as u8)?;
+                self.write_reg_8b(lo_addr + 1, ((data & 0xff00) >> 8) as u8)?;
+                Ok(())
+            }
+        }
+    }
+
+    pub fn send_opcode(&mut self, opcode: u8) -> Result<(), Error> {
+        match opcode {
+            opcodes::SETETHRST | opcodes::SETPKTDEC |
+            opcodes::SETTXRTS | opcodes::ENABLERX => {
+                let mut buf: [u8; 1] = [0];
+                self.rw_n(&mut buf, opcode, 0)
+            }
+            _ => Err(Error::OpcodeError)
+        }
     }
 
     pub fn delay_us(&mut self, duration: u32) {
@@ -122,8 +175,9 @@ impl <SPI: Transfer<u8>,
     }
 
     // TODO: Generalise transfer functions
-    // TODO: (Make data read/write as reference to array)
-    // Currently requires 1-byte addr, read/write data is only 1-byte
+    // Completes an SPI transfer for reading or writing 8-bit data,
+    // and returns the data read/written.
+    // It starts with an 8-bit instruction, followed by an 8-bit address.
     fn rw_addr_u8(&mut self, opcode: u8, addr: u8, data: u8)
                  -> Result<u8, Error> {
         // Enable chip select
@@ -154,40 +208,20 @@ impl <SPI: Transfer<u8>,
     }
 
     // TODO: Generalise transfer functions
-    // Currently does NOT accept addr, read data is N-byte long
-    // Returns a reference to the data returned
-    // Note: buf must be at least (data_length + 1)-byte long
-    // TODO: Check and raise error for array size < (data_length + 1)
-    fn r_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize)
-              -> Result<(), Error> {
-        // Enable chip select
-        self.nss.set_low();
-        // Start writing to SLAVE
-        buf[0] = opcode;
-        match self.spi.transfer(&mut buf[..data_length+1]) {
-            Ok(_) => {
-                // Disable chip select
-                self.nss.set_high();
-                Ok(())
-            },
-            // TODO: Maybe too naive?
-            Err(_) => {
-                // Disable chip select
-                self.nss.set_high();
-                Err(Error::TransferError)
-            }
-        }
-    }
-
-    // Note: buf[0] is currently reserved for opcode to overwrite
     // TODO: Actual data should start from buf[0], not buf[1]
-    fn w_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize)
+    // Completes an SPI transfer for reading data to the given buffer,
+    // or writing data from the buffer.
+    // It sends an 8-bit instruction, followed by either
+    // receiving or sending n*8-bit data.
+    // The slice of buffer provided must begin with the 8-bit instruction.
+    // If n = 0, the transfer will only involve sending the instruction.
+    fn rw_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize)
               -> Result<(), Error> {
+        assert!(buf.len() > data_length);
         // Enable chip select
         self.nss.set_low();
         // Start writing to SLAVE
         buf[0] = opcode;
-        // TODO: Maybe need to copy data to buf later on
         match self.spi.transfer(&mut buf[..data_length+1]) {
             Ok(_) => {
                 // Disable chip select

@@ -8,8 +8,6 @@ with pkgs;
 let
   rustPlatform = callPackage ./nix/rustPlatform.nix {};
 
-  itm-tools = callPackage ./nix/itm-tools.nix { inherit rustPlatform; };
-
   runHelp = writeShellScriptBin "run-help" ''
     echo "[Common Tools]"
     echo "  run-openocd-f4x"
@@ -103,7 +101,7 @@ in
 stdenv.mkDerivation {
   name = "enc424j600-stm32-env";
   buildInputs = with rustPlatform.rust; [
-    rustc cargo pkgs.gdb pkgs.openocd pkgs.tmux itm-tools 
+    rustc cargo pkgs.gdb pkgs.openocd pkgs.tmux pkgs.itm-tools 
     runHelp runTmuxEnv killTmuxEnv
     runOpenOcdF4x runItmDemuxFollow
     exTxStm32f407 exTcpStm32f407

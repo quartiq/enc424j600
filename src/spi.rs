@@ -91,30 +91,35 @@ impl <SPI: Transfer<u8>,
 
     pub fn read_reg_8b(&mut self, addr: u8) -> Result<u8, Error> {
         // Using RCRU instruction to read using unbanked (full) address
-        let r_data = self.rw_addr_u8(opcodes::RCRU, addr, 0)?;
-        Ok(r_data)
+        let mut buf: [u8; 4] = [0; 4];
+        buf[1] = addr;
+        self.rw_n(&mut buf, opcodes::RCRU, 2)?;
+        Ok(buf[2])
     }
 
     pub fn read_reg_16b(&mut self, lo_addr: u8) -> Result<u16, Error> {
+        // Unless the register can be written with specific opcode,
+        // use WCRU instruction to write using unbanked (full) address
+        let mut buf: [u8; 4] = [0; 4];
+        let mut data_offset = 0;    // number of bytes separating
+                                    // actual data from opcode
         match lo_addr {
-            addrs::ERXRDPT | addrs::EGPWRPT => {
-                let mut buf: [u8; 3] = [0; 3];
-                self.rw_n(
-                    &mut buf, match lo_addr {
-                        addrs::ERXRDPT => opcodes::RRXRDPT,
-                        addrs::EGPWRPT => opcodes::RGPWRPT,
-                        _ => unreachable!()
-                    }, 2
-                )?;
-                Ok((buf[2] as u16) << 8 | buf[1] as u16)
-            }
+            addrs::ERXRDPT | addrs::EGPWRPT => { }
             _ => {
-                let r_data_lo = self.read_reg_8b(lo_addr)?;
-                let r_data_hi = self.read_reg_8b(lo_addr + 1)?;
-                // Combine top and bottom 8-bit to return 16-bit
-                Ok(((r_data_hi as u16) << 8) | r_data_lo as u16)
+                buf[1] = lo_addr;
+                data_offset = 1;
             }
         }
+        self.rw_n(
+            &mut buf,
+            match lo_addr {
+                addrs::ERXRDPT => opcodes::RRXRDPT,
+                addrs::EGPWRPT => opcodes::RGPWRPT,
+                _ => opcodes::RCRU
+            },
+            2 + data_offset     // extra 8-bit lo_addr before data
+        )?;
+        Ok(buf[data_offset+1] as u16 | (buf[data_offset+2] as u16) << 8)
     }
 
     // Currently requires manual slicing (buf[1..]) for the data read back
@@ -131,32 +136,37 @@ impl <SPI: Transfer<u8>,
     }
 
     pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), Error> {
-        // TODO: addr should be separated from w_data
         // Using WCRU instruction to write using unbanked (full) address
-        self.rw_addr_u8(opcodes::WCRU, addr, data)?;
-        Ok(())
+        let mut buf: [u8; 3] = [0; 3];
+        buf[1] = addr;
+        buf[2] = data;
+        self.rw_n(&mut buf, opcodes::WCRU, 2)
     }
 
     pub fn write_reg_16b(&mut self, lo_addr: u8, data: u16) -> Result<(), Error> {
+        // Unless the register can be written with specific opcode,
+        // use WCRU instruction to write using unbanked (full) address
+        let mut buf: [u8; 4] = [0; 4];
+        let mut data_offset = 0;    // number of bytes separating
+                                    // actual data from opcode
         match lo_addr {
-            addrs::ERXRDPT | addrs::EGPWRPT => {
-                let mut buf: [u8; 3] = [0; 3];
-                buf[1] = data as u8 & 8;
-                buf[2] = (data >> 8) as u8 & 8;
-                self.rw_n(
-                    &mut buf, match lo_addr {
-                        addrs::ERXRDPT => opcodes::WRXRDPT,
-                        addrs::EGPWRPT => opcodes::WGPWRPT,
-                        _ => unreachable!()
-                    }, 2
-                )
-            }
+            addrs::ERXRDPT | addrs::EGPWRPT => { }
             _ => {
-                self.write_reg_8b(lo_addr, (data & 0xff) as u8)?;
-                self.write_reg_8b(lo_addr + 1, ((data & 0xff00) >> 8) as u8)?;
-                Ok(())
+                buf[1] = lo_addr;
+                data_offset = 1;
             }
         }
+        buf[1+data_offset] = data as u8;
+        buf[2+data_offset] = (data >> 8) as u8;
+        self.rw_n(
+            &mut buf,
+            match lo_addr {
+                addrs::ERXRDPT => opcodes::WRXRDPT,
+                addrs::EGPWRPT => opcodes::WGPWRPT,
+                _ => opcodes::WCRU
+            },
+            2 + data_offset     // extra 8-bit lo_addr before data
+        )
     }
 
     pub fn send_opcode(&mut self, opcode: u8) -> Result<(), Error> {
@@ -174,40 +184,6 @@ impl <SPI: Transfer<u8>,
         (self.delay_ns)(duration * 1000)
     }
 
-    // TODO: Generalise transfer functions
-    // Completes an SPI transfer for reading or writing 8-bit data,
-    // and returns the data read/written.
-    // It starts with an 8-bit instruction, followed by an 8-bit address.
-    fn rw_addr_u8(&mut self, opcode: u8, addr: u8, data: u8)
-                 -> Result<u8, Error> {
-        // Enable chip select
-        self.nss.set_low();
-        // Start writing to SLAVE
-        // TODO: don't just use 3 bytes
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = opcode;
-        buf[1] = addr;
-        buf[2] = data;
-        match self.spi.transfer(&mut buf) {
-            Ok(_) => {
-                // Disable chip select
-                (self.delay_ns)(60);
-                self.nss.set_high();
-                (self.delay_ns)(30);
-                Ok(buf[2])
-            },
-            // TODO: Maybe too naive?
-            Err(_) => {
-                // Disable chip select
-                (self.delay_ns)(60);
-                self.nss.set_high();
-                (self.delay_ns)(30);
-                Err(Error::TransferError)
-            }
-        }
-    }
-
-    // TODO: Generalise transfer functions
     // TODO: Actual data should start from buf[0], not buf[1]
     // Completes an SPI transfer for reading data to the given buffer,
     // or writing data from the buffer.

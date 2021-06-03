@@ -195,6 +195,13 @@ impl <SPI: Transfer<u8>,
         assert!(buf.len() > data_length);
         // Enable chip select
         self.nss.set_low();
+        match opcode {
+            opcodes::RCRU | opcodes::WCRU |
+            opcodes::RRXDATA | opcodes::WGPDATA => {
+                (self.delay_ns)(50);    // >=50ns min. CS_n setup time
+            }
+            _ => { }
+        }
         // Start writing to SLAVE
         buf[0] = opcode;
         let result = self.spi.transfer(&mut buf[..data_length+1]);
@@ -202,9 +209,9 @@ impl <SPI: Transfer<u8>,
             opcodes::RCRU | opcodes::WCRU |
             opcodes::RRXDATA | opcodes::WGPDATA => {
                 // Disable chip select
-                (self.delay_ns)(60);
+                (self.delay_ns)(50);    // >=50ns min. CS_n hold time
                 self.nss.set_high();
-                (self.delay_ns)(30);
+                (self.delay_ns)(20);    // >=20ns min. CS_n disable time
             }
             _ => { }
         }

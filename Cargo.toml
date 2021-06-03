@@ -32,6 +32,7 @@ nal = [
     "embedded-time", "embedded-nal", "heapless",
     "smoltcp-phy", "smoltcp/socket-tcp", "smoltcp/ethernet"
 ]
+cortex-m-cpu = ["cortex-m"]
 # Example-based features
 smoltcp-examples = [
     "smoltcp-phy", "smoltcp/socket-tcp", "smoltcp/ethernet"

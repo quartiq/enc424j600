@@ -62,11 +62,11 @@ pub mod addrs {
 /// Struct for SPI I/O interface on ENC424J600
 /// Note: stm32f4xx_hal::spi's pins include: SCK, MISO, MOSI
 pub struct SpiPort<SPI: Transfer<u8>,
-                   NSS: OutputPin,
-                   F: FnMut(u32) -> ()> {
+                   NSS: OutputPin> {
     spi: SPI,
     nss: NSS,
-    delay_ns: F,
+    #[cfg(feature = "cortex-m-cpu")]
+    cpu_freq_mhz: f32,
 }
 
 pub enum Error {
@@ -76,17 +76,23 @@ pub enum Error {
 
 #[allow(unused_must_use)]
 impl <SPI: Transfer<u8>,
-      NSS: OutputPin,
-      F: FnMut(u32) -> ()> SpiPort<SPI, NSS, F> {
+      NSS: OutputPin> SpiPort<SPI, NSS> {
     // TODO: return as Result()
-    pub fn new(spi: SPI, mut nss: NSS, delay_ns: F) -> Self {
+    pub fn new(spi: SPI, mut nss: NSS) -> Self {
         nss.set_high();
 
         SpiPort {
             spi,
             nss,
-            delay_ns,
+            #[cfg(feature = "cortex-m-cpu")]
+            cpu_freq_mhz: 0.,
         }
+    }
+
+    #[cfg(feature = "cortex-m-cpu")]
+    pub fn cpu_freq_mhz(mut self, freq: u32) -> Self {
+        self.cpu_freq_mhz = freq as f32;
+        self
     }
 
     pub fn read_reg_8b(&mut self, addr: u8) -> Result<u8, Error> {
@@ -180,10 +186,6 @@ impl <SPI: Transfer<u8>,
         }
     }
 
-    pub fn delay_us(&mut self, duration: u32) {
-        (self.delay_ns)(duration * 1000)
-    }
-
     // TODO: Actual data should start from buf[0], not buf[1]
     // Completes an SPI transfer for reading data to the given buffer,
     // or writing data from the buffer.
@@ -195,10 +197,12 @@ impl <SPI: Transfer<u8>,
         assert!(buf.len() > data_length);
         // Enable chip select
         self.nss.set_low();
+        // >=50ns min. CS_n setup time
+        #[cfg(feature = "cortex-m-cpu")]
         match opcode {
             opcodes::RCRU | opcodes::WCRU |
             opcodes::RRXDATA | opcodes::WGPDATA => {
-                (self.delay_ns)(50);    // >=50ns min. CS_n setup time
+                cortex_m::asm::delay((0.05*(self.cpu_freq_mhz+1.)) as u32);
             }
             _ => { }
         }
@@ -209,9 +213,13 @@ impl <SPI: Transfer<u8>,
             opcodes::RCRU | opcodes::WCRU |
             opcodes::RRXDATA | opcodes::WGPDATA => {
                 // Disable chip select
-                (self.delay_ns)(50);    // >=50ns min. CS_n hold time
+                // >=50ns min. CS_n hold time
+                #[cfg(feature = "cortex-m-cpu")]
+                cortex_m::asm::delay((0.05*(self.cpu_freq_mhz+1.)) as u32);
                 self.nss.set_high();
-                (self.delay_ns)(20);    // >=20ns min. CS_n disable time
+                // >=20ns min. CS_n disable time
+                #[cfg(feature = "cortex-m-cpu")]
+                cortex_m::asm::delay((0.02*(self.cpu_freq_mhz+1.)) as u32);    
             }
             _ => { }
         }

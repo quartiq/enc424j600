@@ -44,22 +44,26 @@ impl From<spi::Error> for Error {
 
 /// ENC424J600 controller in SPI mode
 pub struct Enc424j600<SPI: Transfer<u8>,
-                      NSS: OutputPin,
-                      F: FnMut(u32) -> ()> {
-    spi_port: spi::SpiPort<SPI, NSS, F>,
+                      NSS: OutputPin> {
+    spi_port: spi::SpiPort<SPI, NSS>,
     rx_buf: rx::RxBuffer,
-    tx_buf: tx::TxBuffer
+    tx_buf: tx::TxBuffer,
 }
 
 impl <SPI: Transfer<u8>,
-      NSS: OutputPin,
-      F: FnMut(u32) -> ()> Enc424j600<SPI, NSS, F> {
-    pub fn new(spi: SPI, nss: NSS, delay_ns: F) -> Self {
+      NSS: OutputPin> Enc424j600<SPI, NSS> {
+    pub fn new(spi: SPI, nss: NSS) -> Self {
         Enc424j600 {
-            spi_port: spi::SpiPort::new(spi, nss, delay_ns),
+            spi_port: spi::SpiPort::new(spi, nss),
             rx_buf: rx::RxBuffer::new(),
-            tx_buf: tx::TxBuffer::new()
+            tx_buf: tx::TxBuffer::new(),
         }
+    }
+
+    #[cfg(feature = "cortex-m-cpu")]
+    pub fn cpu_freq_mhz(mut self, freq: u32) -> Self {
+        self.spi_port = self.spi_port.cpu_freq_mhz(freq);
+        self
     }
 
     pub fn init(&mut self, delay: &mut impl DelayUs<u16>) -> Result<(), Error> {
@@ -145,8 +149,7 @@ impl <SPI: Transfer<u8>,
 }
 
 impl <SPI: Transfer<u8>,
-      NSS: OutputPin,
-      F: FnMut(u32) -> ()> EthPhy for Enc424j600<SPI, NSS, F> {
+      NSS: OutputPin> EthPhy for Enc424j600<SPI, NSS> {
     /// Receive the next packet and return it
     /// Set is_poll to true for returning until PKTIF is set;
     /// Set is_poll to false for returning Err when PKTIF is not set

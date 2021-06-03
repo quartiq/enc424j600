@@ -191,25 +191,27 @@ impl <SPI: Transfer<u8>,
     // receiving or sending n*8-bit data.
     // The slice of buffer provided must begin with the 8-bit instruction.
     // If n = 0, the transfer will only involve sending the instruction.
-    fn rw_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize)
-              -> Result<(), Error> {
+    fn rw_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize) -> Result<(), Error> {
         assert!(buf.len() > data_length);
         // Enable chip select
         self.nss.set_low();
         // Start writing to SLAVE
         buf[0] = opcode;
-        match self.spi.transfer(&mut buf[..data_length+1]) {
-            Ok(_) => {
+        let result = self.spi.transfer(&mut buf[..data_length+1]);
+        match opcode {
+            opcodes::RCRU | opcodes::WCRU |
+            opcodes::RRXDATA | opcodes::WGPDATA => {
                 // Disable chip select
+                (self.delay_ns)(60);
                 self.nss.set_high();
-                Ok(())
-            },
-            // TODO: Maybe too naive?
-            Err(_) => {
-                // Disable chip select
-                self.nss.set_high();
-                Err(Error::TransferError)
+                (self.delay_ns)(30);
             }
+            _ => { }
+        }
+        match result {
+            Ok(_) => Ok(()),
+            // TODO: Maybe too naive?
+            Err(_) => Err(Error::TransferError),
         }
     }
 }

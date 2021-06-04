@@ -3,10 +3,10 @@ use crate::RAW_FRAME_LENGTH_MAX;
 /// Struct for TX Buffer on the hardware
 /// TODO: Should be a singleton
 pub struct TxBuffer {
-    start_addr: u16,
+    pub start_addr: u16,
     // The following two fields are controlled by firmware
-    next_addr: u16,
-    tail_addr: u16
+    pub next_addr: u16,
+    pub tail_addr: u16
 }
 
 impl TxBuffer {
@@ -16,27 +16,6 @@ impl TxBuffer {
             next_addr: 0x0001,
             tail_addr: 0x0000
         }
-    }
-
-    pub fn set_start_addr(&mut self, addr: u16) {
-        self.start_addr = addr;
-    }
-    pub fn get_start_addr(& self) -> u16{
-        self.start_addr
-    }
-
-    pub fn set_next_addr(&mut self, addr: u16) {
-        self.next_addr = addr;
-    }
-    pub fn get_next_addr(& self) -> u16 {
-        self.next_addr
-    }
-
-    pub fn set_tail_addr(&mut self, addr: u16) {
-        self.tail_addr = addr;
-    }
-    pub fn get_tail_addr(& self) -> u16{
-        self.tail_addr
     }
 }
 

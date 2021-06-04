@@ -18,6 +18,8 @@ pub use crate::{
 
 #[cfg(feature="smoltcp")]
 pub mod smoltcp_phy;
+#[cfg(feature="smoltcp")]
+pub use crate::smoltcp_phy::SmoltcpDevice;
 
 #[cfg(feature="nal")]
 pub mod nal;

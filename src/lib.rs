@@ -1,6 +1,7 @@
 #![no_std]
 
-pub mod spi;
+mod spi;
+pub use crate::spi::interfaces as SpiInterfaces;
 use embedded_hal::{
     blocking::{
         spi::Transfer,
@@ -9,8 +10,11 @@ use embedded_hal::{
     digital::v2::OutputPin,
 };
 
-pub mod rx;
-pub mod tx;
+mod rx;
+mod tx;
+pub use crate::{
+    rx::RxPacket, tx::TxPacket,
+};
 
 #[cfg(feature="smoltcp")]
 pub mod smoltcp_phy;

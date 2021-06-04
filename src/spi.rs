@@ -14,6 +14,7 @@ pub mod interfaces {
     pub const SPI_CLOCK_FREQ: u32 = 14_000_000;
 }
 
+#[allow(dead_code)]
 pub mod opcodes {
     /// 1-byte Instructions
     pub const SETETHRST: u8 = 0b1100_1010;
@@ -32,6 +33,7 @@ pub mod opcodes {
     pub const WGPDATA: u8 = 0b0010_1010;    // 8-bit opcode followed by data
 }
 
+#[allow(dead_code)]
 pub mod addrs {
     /// SPI Register Mapping
     /// Note: PSP interface use different address mapping

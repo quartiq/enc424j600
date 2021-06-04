@@ -79,8 +79,8 @@ const APP: () = {
         let mut spi_eth = {
             let spi_eth_port = Spi::spi1(
                 spi1, (spi1_sck, spi1_miso, spi1_mosi),
-                enc424j600::spi::interfaces::SPI_MODE,
-                Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
+                enc424j600::SpiInterfaces::SPI_MODE,
+                Hertz(enc424j600::SpiInterfaces::SPI_CLOCK_FREQ),
                 clocks);
 
             SpiEth::new(spi_eth_port, spi1_nss)
@@ -137,7 +137,7 @@ const APP: () = {
             0x00, 0x00, 0x00, 0x00, 0x69, 0xd0, 0x85, 0x9f
         ];
         loop {
-            let mut eth_tx_packet = enc424j600::tx::TxPacket::new();
+            let mut eth_tx_packet = enc424j600::TxPacket::new();
             eth_tx_packet.update_frame(&eth_tx_dat, 64);
             iprint!(stim0,
                 "Sending packet (len={:}): ", eth_tx_packet.get_frame_length());

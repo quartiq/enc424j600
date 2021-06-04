@@ -17,7 +17,7 @@ use stm32f4xx_hal::{
     spi::Spi,
     time::Hertz
 };
-use enc424j600::smoltcp_phy;
+use enc424j600::SmoltcpDevice;
 
 use smoltcp::wire::{
     EthernetAddress, IpAddress, IpCidr, Ipv6Cidr
@@ -100,7 +100,7 @@ const APP: () = {
     struct Resources {
         eth_iface: EthernetInterface<
             'static,
-            smoltcp_phy::SmoltcpDevice<SpiEth>>,
+            SmoltcpDevice<SpiEth>>,
         itm: ITM
     }
 
@@ -148,8 +148,8 @@ const APP: () = {
             let mut spi_eth = {
                 let spi_eth_port = Spi::spi1(
                     spi1, (spi1_sck, spi1_miso, spi1_mosi),
-                    enc424j600::spi::interfaces::SPI_MODE,
-                    Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
+                    enc424j600::SpiInterfaces::SPI_MODE,
+                    Hertz(enc424j600::SpiInterfaces::SPI_CLOCK_FREQ),
                     clocks);
 
                 SpiEth::new(spi_eth_port, spi1_nss)
@@ -186,7 +186,7 @@ const APP: () = {
 
             // Init smoltcp interface
             let eth_iface = {
-                let device = smoltcp_phy::SmoltcpDevice::new(spi_eth);
+                let device = SmoltcpDevice::new(spi_eth);
 
                 let store = unsafe { &mut NET_STORE };
                 store.ip_addrs[0] = IpCidr::new(IpAddress::v4(192, 168, 1, 77), 24);

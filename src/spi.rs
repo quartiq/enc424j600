@@ -199,13 +199,7 @@ impl <SPI: Transfer<u8>,
         self.nss.set_low();
         // >=50ns min. CS_n setup time
         #[cfg(feature = "cortex-m-cpu")]
-        match opcode {
-            opcodes::RCRU | opcodes::WCRU |
-            opcodes::RRXDATA | opcodes::WGPDATA => {
-                cortex_m::asm::delay((0.05*(self.cpu_freq_mhz+1.)) as u32);
-            }
-            _ => { }
-        }
+        cortex_m::asm::delay((0.05*(self.cpu_freq_mhz+1.)) as u32);
         // Start writing to SLAVE
         buf[0] = opcode;
         let result = self.spi.transfer(&mut buf[..data_length+1]);

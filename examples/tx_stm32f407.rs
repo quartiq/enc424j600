@@ -49,9 +49,7 @@ const APP: () = {
             .cfgr
             .sysclk(168.mhz())
             .hclk(168.mhz())
-            //.pclk1(32.mhz())
-            .pclk1(42.mhz())
-            //.pclk2(64.mhz())
+            .pclk2(42.mhz())        // used by SPI1
             .require_pll48clk()
             .freeze();
         let mut delay = Delay::new(c.core.SYST, clocks);
@@ -80,7 +78,7 @@ const APP: () = {
             let spi_eth_port = Spi::spi1(
                 spi1, (spi1_sck, spi1_miso, spi1_mosi),
                 enc424j600::spi::interfaces::SPI_MODE,
-                Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
+                10_500_000.hz(),    // PCLK2 @ 42MHz, set SPI1 baud rate as f_PCLK2 divided by 4
                 clocks);
 
             SpiEth::new(spi_eth_port, spi1_nss)

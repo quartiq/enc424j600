@@ -10,7 +10,7 @@ let
   ];
   rustChannel =
     lib.rustLib.fromManifestFile rustManifest {
-      inherit stdenv fetchurl patchelf;
+      inherit stdenv lib fetchurl patchelf;
     };
   rust =
     rustChannel.rust.override {

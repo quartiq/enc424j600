@@ -1,14 +1,11 @@
 use core::cell::RefCell;
 use core::convert::TryInto;
-use heapless::{consts, Vec};
+use embedded_hal::{blocking::spi::Transfer, digital::v2::OutputPin};
 use embedded_nal as nal;
+pub use embedded_time as time;
+use heapless::{consts, Vec};
 use nal::nb;
 use smoltcp as net;
-use embedded_hal::{
-    blocking::spi::Transfer,
-    digital::v2::OutputPin
-};
-pub use embedded_time as time;
 use time::duration::*;
 
 #[derive(Debug)]
@@ -23,9 +20,7 @@ pub enum NetworkError {
 
 pub type NetworkInterface<SPI, NSS> = net::iface::EthernetInterface<
     'static,
-    crate::smoltcp_phy::SmoltcpDevice<
-        crate::Enc424j600<SPI, NSS>
-    >,
+    crate::smoltcp_phy::SmoltcpDevice<crate::Enc424j600<SPI, NSS>>,
 >;
 
 pub struct NetworkStack<'a, SPI, NSS, IntClock>
@@ -86,16 +81,20 @@ where
                 let now = self.clock.try_now().map_err(|_| NetworkError::TimeFault)?;
                 let mut duration = now.checked_duration_since(&instant);
                 // Normally, the wrapping clock should produce a valid duration.
-                // However, if `now` is earlier than `instant` (e.g. because the main 
-                // application cannot get a valid epoch time during initialisation, 
+                // However, if `now` is earlier than `instant` (e.g. because the main
+                // application cannot get a valid epoch time during initialisation,
                 // we should still produce a duration that is just 1ms.
                 if duration.is_none() {
                     self.time_ms.replace(0);
-                    duration = Some(Milliseconds(1_u32)
-                        .to_generic::<u32>(IntClock::SCALING_FACTOR)
-                        .map_err(|_| NetworkError::TimeFault)?);
+                    duration = Some(
+                        Milliseconds(1_u32)
+                            .to_generic::<u32>(IntClock::SCALING_FACTOR)
+                            .map_err(|_| NetworkError::TimeFault)?,
+                    );
                 }
-                let duration_ms_time: Milliseconds<u32> = duration.unwrap().try_into()
+                let duration_ms_time: Milliseconds<u32> = duration
+                    .unwrap()
+                    .try_into()
                     .map_err(|_| NetworkError::TimeFault)?;
                 duration_ms = *duration_ms_time.integer();
                 // Adjust duration into ms (note: decimal point truncated)
@@ -119,9 +118,7 @@ where
             net::time::Instant::from_millis(*self.time_ms.borrow() as u32),
         ) {
             Ok(changed) => Ok(!changed),
-            Err(_e) => {
-                Ok(true)
-            }
+            Err(_e) => Ok(true),
         }
     }
 
@@ -165,7 +162,7 @@ where
             let mut sockets = self.sockets.borrow_mut();
             let socket: &mut net::socket::TcpSocket = &mut *sockets.get(handle);
             if socket.state() == net::socket::TcpState::Established {
-                return Ok(handle)
+                return Ok(handle);
             }
         }
 
@@ -177,16 +174,14 @@ where
             socket.abort();
             match remote.ip() {
                 nal::IpAddr::V4(addr) => {
-                    let address =
-                        net::wire::Ipv4Address::from_bytes(&addr.octets()[..]);
+                    let address = net::wire::Ipv4Address::from_bytes(&addr.octets()[..]);
                     socket
                         .connect((address, remote.port()), self.get_ephemeral_port())
                         .map_err(|_| NetworkError::ConnectionFailure)?;
                     net::wire::IpAddress::Ipv4(address)
-                },
+                }
                 nal::IpAddr::V6(addr) => {
-                    let address =
-                        net::wire::Ipv6Address::from_parts(&addr.segments()[..]);
+                    let address = net::wire::Ipv6Address::from_parts(&addr.segments()[..]);
                     socket
                         .connect((address, remote.port()), self.get_ephemeral_port())
                         .map_err(|_| NetworkError::ConnectionFailure)?;
@@ -205,7 +200,7 @@ where
                 // TCP state at ESTABLISHED means there is connection, so
                 // simply return the socket.
                 if socket.state() == net::socket::TcpState::Established {
-                    return Ok(handle)
+                    return Ok(handle);
                 }
                 // TCP state at CLOSED implies that the remote rejected connection;
                 // In this case, abort the connection, and then return the socket
@@ -213,10 +208,10 @@ where
                 if socket.state() == net::socket::TcpState::Closed {
                     socket.abort();
                     // TODO: Return Err(), but would require changes in quartiq/minimq
-                    return Ok(handle)
+                    return Ok(handle);
                 }
             }
-            
+
             // Any TCP states other than CLOSED and ESTABLISHED are considered
             // "transient", so this function should keep waiting and let smoltcp poll
             // (e.g. for handling echo reqeust/reply) at the same time.
@@ -226,7 +221,7 @@ where
             // Time out, and return the socket for re-connection in the future.
             if timeout_ms > self.connection_timeout_ms {
                 // TODO: Return Err(), but would require changes in quartiq/minimq
-                return Ok(handle)
+                return Ok(handle);
             }
         }
     }
@@ -273,8 +268,8 @@ where
             // Close the socket to push it back to the array, for
             // re-opening the socket in the future
             self.close(*handle)?;
-            return Err(nb::Error::Other(NetworkError::WriteFailure))
-        }   
+            return Err(nb::Error::Other(NetworkError::WriteFailure));
+        }
         Ok(buffer.len())
     }
 
@@ -291,8 +286,8 @@ where
             let socket: &mut net::socket::TcpSocket = &mut *sockets.get(*handle);
             let result = socket.recv_slice(buffer);
             match result {
-                Ok(num_bytes) => { return Ok(num_bytes) },
-                Err(_) => {},
+                Ok(num_bytes) => return Ok(num_bytes),
+                Err(_) => {}
             }
         }
         // Close the socket to push it back to the array, for

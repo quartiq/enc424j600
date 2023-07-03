@@ -13,7 +13,7 @@ pub const RSV_LENGTH: usize = 6;
 pub struct RxBuffer {
     start_addr: u16,
     next_addr: u16,
-    tail_addr: u16
+    tail_addr: u16,
 }
 
 impl RxBuffer {
@@ -21,28 +21,28 @@ impl RxBuffer {
         RxBuffer {
             start_addr: ERXST_DEFAULT,
             next_addr: ERXST_DEFAULT,
-            tail_addr: ERXTAIL_DEFAULT
+            tail_addr: ERXTAIL_DEFAULT,
         }
     }
 
     pub fn set_start_addr(&mut self, addr: u16) {
         self.start_addr = addr;
     }
-    pub fn get_start_addr(& self) -> u16{
+    pub fn get_start_addr(&self) -> u16 {
         self.start_addr
     }
 
     pub fn set_next_addr(&mut self, addr: u16) {
         self.next_addr = addr;
     }
-    pub fn get_next_addr(& self) -> u16 {
+    pub fn get_next_addr(&self) -> u16 {
         self.next_addr
     }
 
     pub fn set_tail_addr(&mut self, addr: u16) {
         self.tail_addr = addr;
     }
-    pub fn get_tail_addr(& self) -> u16{
+    pub fn get_tail_addr(&self) -> u16 {
         self.tail_addr
     }
 }
@@ -52,7 +52,7 @@ impl RxBuffer {
 pub struct RxPacket {
     rsv: Rsv,
     frame: [u8; RAW_FRAME_LENGTH_MAX],
-    frame_length: usize
+    frame_length: usize,
 }
 
 impl RxPacket {
@@ -60,7 +60,7 @@ impl RxPacket {
         RxPacket {
             rsv: Rsv::new(),
             frame: [0; RAW_FRAME_LENGTH_MAX],
-            frame_length: 0
+            frame_length: 0,
         }
     }
 
@@ -106,14 +106,14 @@ impl RxPacket {
 struct Rsv {
     raw_rsv: [u8; RSV_LENGTH],
     // TODO: Add more definitions
-    frame_length: u16
+    frame_length: u16,
 }
 
 impl Rsv {
     fn new() -> Self {
         Rsv {
             raw_rsv: [0; RSV_LENGTH],
-            frame_length: 0_u16
+            frame_length: 0_u16,
         }
     }
 

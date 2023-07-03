@@ -18,7 +18,7 @@ cortex-m = {version = "0.5", optional = true }
 
 # Optional dependencies for building examples
 [dev-dependencies]
-stm32f4xx-hal = { version = "0.8", features = ["stm32f407"] }
+stm32f4xx-hal = { version = "0.8", features = ["stm32f407", "rt"] }
 cortex-m-rt = "0.6"
 cortex-m-rtic = "0.5.3"
 panic-itm = "0.4"

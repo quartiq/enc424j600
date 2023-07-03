@@ -2,34 +2,32 @@
 #![no_main]
 
 extern crate panic_itm;
-use cortex_m::{iprintln, iprint};
+use cortex_m::{iprint, iprintln};
 
-use embedded_hal::{
-    digital::v2::OutputPin,
-    blocking::delay::DelayMs
-};
-use stm32f4xx_hal::{
-    rcc::RccExt,
-    gpio::GpioExt,
-    time::U32Ext,
-    stm32::ITM,
-    delay::Delay,
-    spi::Spi,
-    time::Hertz
-};
+use embedded_hal::{blocking::delay::DelayMs, digital::v2::OutputPin};
 use enc424j600::EthPhy;
+use stm32f4xx_hal::{
+    delay::Delay, gpio::GpioExt, rcc::RccExt, spi::Spi, stm32::ITM, time::Hertz, time::U32Ext,
+};
 
 ///
 use stm32f4xx_hal::{
-    stm32::SPI1,
     gpio::{
-        gpioa::{PA5, PA6, PA7, PA4},
-        Alternate, AF5, Output, PushPull
+        gpioa::{PA4, PA5, PA6, PA7},
+        Alternate, Output, PushPull, AF5,
     },
+    stm32::SPI1,
 };
 type SpiEth = enc424j600::Enc424j600<
-    Spi<SPI1, (PA5<Alternate<AF5>>, PA6<Alternate<AF5>>, PA7<Alternate<AF5>>)>,
-    PA4<Output<PushPull>>
+    Spi<
+        SPI1,
+        (
+            PA5<Alternate<AF5>>,
+            PA6<Alternate<AF5>>,
+            PA7<Alternate<AF5>>,
+        ),
+    >,
+    PA4<Output<PushPull>>,
 >;
 
 #[rtic::app(device = stm32f4xx_hal::stm32, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
@@ -45,7 +43,10 @@ const APP: () = {
         c.core.SCB.enable_icache();
         c.core.SCB.enable_dcache(&mut c.core.CPUID);
 
-        let clocks = c.device.RCC.constrain()
+        let clocks = c
+            .device
+            .RCC
+            .constrain()
             .cfgr
             .sysclk(168.mhz())
             .hclk(168.mhz())
@@ -59,8 +60,7 @@ const APP: () = {
         // Init ITM
         let mut itm = c.core.ITM;
         let stim0 = &mut itm.stim[0];
-        iprintln!(stim0,
-            "Eth TX Pinging on STM32-F407 via NIC100/ENC424J600");
+        iprintln!(stim0, "Eth TX Pinging on STM32-F407 via NIC100/ENC424J600");
 
         // NIC100 / ENC424J600 Set-up
         let spi1 = c.device.SPI1;
@@ -78,13 +78,14 @@ const APP: () = {
         // Create SPI1 for HAL
         let mut spi_eth = {
             let spi_eth_port = Spi::spi1(
-                spi1, (spi1_sck, spi1_miso, spi1_mosi),
+                spi1,
+                (spi1_sck, spi1_miso, spi1_mosi),
                 enc424j600::spi::interfaces::SPI_MODE,
                 Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
-                clocks);
+                clocks,
+            );
 
-            SpiEth::new(spi_eth_port, spi1_nss)
-                .cpu_freq_mhz(168)
+            SpiEth::new(spi_eth_port, spi1_nss).cpu_freq_mhz(168)
         };
 
         // Init
@@ -106,7 +107,7 @@ const APP: () = {
                 0 => iprint!(stim0, "MAC Address = {:02x}-", byte),
                 1..=4 => iprint!(stim0, "{:02x}-", byte),
                 5 => iprint!(stim0, "{:02x}\n", byte),
-                _ => ()
+                _ => (),
             };
         }
 
@@ -127,20 +128,20 @@ const APP: () = {
         let stim0 = &mut c.resources.itm.stim[0];
         // Testing Eth TX
         let eth_tx_dat: [u8; 64] = [
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x08, 0x60,
-            0x6e, 0x44, 0x42, 0x95, 0x08, 0x06, 0x00, 0x01,
-            0x08, 0x00, 0x06, 0x04, 0x00, 0x01, 0x08, 0x60,
-            0x6e, 0x44, 0x42, 0x95, 0xc0, 0xa8, 0x01, 0x64,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8,
-            0x01, 0xe7, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x69, 0xd0, 0x85, 0x9f
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x08, 0x60, 0x6e, 0x44, 0x42, 0x95, 0x08, 0x06,
+            0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01, 0x08, 0x60, 0x6e, 0x44, 0x42, 0x95,
+            0xc0, 0xa8, 0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0xe7,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x69, 0xd0, 0x85, 0x9f,
         ];
         loop {
             let mut eth_tx_packet = enc424j600::tx::TxPacket::new();
             eth_tx_packet.update_frame(&eth_tx_dat, 64);
-            iprint!(stim0,
-                "Sending packet (len={:}): ", eth_tx_packet.get_frame_length());
+            iprint!(
+                stim0,
+                "Sending packet (len={:}): ",
+                eth_tx_packet.get_frame_length()
+            );
             for i in 0..20 {
                 let byte = eth_tx_packet.get_frame_byte(i);
                 match i {
@@ -151,7 +152,7 @@ const APP: () = {
                     13..=14 | 16..=18 => iprint!(stim0, "{:02x}", byte),
                     5 | 11 | 15 => iprint!(stim0, "{:02x} ", byte),
                     19 => iprint!(stim0, "{:02x} ...\n", byte),
-                    _ => ()
+                    _ => (),
                 };
             }
             c.resources.spi_eth.send_packet(&eth_tx_packet);

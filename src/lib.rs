@@ -12,9 +12,6 @@ pub mod tx;
 #[cfg(feature = "smoltcp")]
 pub mod smoltcp_phy;
 
-#[cfg(feature = "nal")]
-pub mod nal;
-
 /// Max raw frame array size
 pub const RAW_FRAME_LENGTH_MAX: usize = 1518;
 

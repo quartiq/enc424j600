@@ -2,42 +2,31 @@
 #![no_main]
 
 extern crate panic_itm;
-use cortex_m::{iprintln, iprint};
+use cortex_m::{iprint, iprintln};
 
-use embedded_hal::{
-    digital::v2::OutputPin,
-    blocking::delay::DelayMs
-};
-use stm32f4xx_hal::{
-    rcc::RccExt,
-    gpio::GpioExt,
-    time::U32Ext,
-    stm32::ITM,
-    delay::Delay,
-    spi::Spi,
-    time::Hertz
-};
+use embedded_hal::{blocking::delay::DelayMs, digital::v2::OutputPin};
 use enc424j600::smoltcp_phy;
-
-use smoltcp::wire::{
-    EthernetAddress, IpAddress, IpCidr, Ipv6Cidr
+use stm32f4xx_hal::{
+    delay::Delay, gpio::GpioExt, rcc::RccExt, spi::Spi, stm32::ITM, time::Hertz, time::U32Ext,
 };
-use smoltcp::iface::{NeighborCache, EthernetInterfaceBuilder, EthernetInterface};
-use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
-use core::str;
+
 use core::fmt::Write;
+use core::str;
+use smoltcp::iface::{EthernetInterface, EthernetInterfaceBuilder, NeighborCache};
+use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv6Cidr};
 
 /// Timer
 use core::cell::RefCell;
 use cortex_m::interrupt::Mutex;
 use cortex_m_rt::exception;
+use smoltcp::time::Instant;
 use stm32f4xx_hal::{
     rcc::Clocks,
+    stm32::SYST,
     time::MilliSeconds,
-    timer::{Timer, Event as TimerEvent},
-    stm32::SYST
+    timer::{Event as TimerEvent, Timer},
 };
-use smoltcp::time::Instant;
 /// Rate in Hz
 const TIMER_RATE: u32 = 20;
 /// Interval duration in milliseconds
@@ -55,31 +44,34 @@ fn timer_setup(syst: SYST, clocks: Clocks) {
 #[exception]
 fn SysTick() {
     cortex_m::interrupt::free(|cs| {
-        *TIMER_MS.borrow(cs)
-            .borrow_mut() += TIMER_DELTA;
+        *TIMER_MS.borrow(cs).borrow_mut() += TIMER_DELTA;
     });
 }
 
 /// Obtain current time in milliseconds
 pub fn timer_now() -> MilliSeconds {
-    let ms = cortex_m::interrupt::free(|cs| {
-        *TIMER_MS.borrow(cs)
-            .borrow()
-    });
+    let ms = cortex_m::interrupt::free(|cs| *TIMER_MS.borrow(cs).borrow());
     ms.ms()
 }
 
 ///
 use stm32f4xx_hal::{
-    stm32::SPI1,
     gpio::{
-        gpioa::{PA5, PA6, PA7, PA4},
-        Alternate, AF5, Output, PushPull
-    }
+        gpioa::{PA4, PA5, PA6, PA7},
+        Alternate, Output, PushPull, AF5,
+    },
+    stm32::SPI1,
 };
 type SpiEth = enc424j600::Enc424j600<
-    Spi<SPI1, (PA5<Alternate<AF5>>, PA6<Alternate<AF5>>, PA7<Alternate<AF5>>)>,
-    PA4<Output<PushPull>>
+    Spi<
+        SPI1,
+        (
+            PA5<Alternate<AF5>>,
+            PA6<Alternate<AF5>>,
+            PA7<Alternate<AF5>>,
+        ),
+    >,
+    PA4<Output<PushPull>>,
 >;
 
 pub struct NetStorage {
@@ -89,19 +81,15 @@ pub struct NetStorage {
 
 static mut NET_STORE: NetStorage = NetStorage {
     // Placeholder for the real IP address, which is initialized at runtime.
-    ip_addrs: [IpCidr::Ipv6(
-        Ipv6Cidr::SOLICITED_NODE_PREFIX,
-    )],
+    ip_addrs: [IpCidr::Ipv6(Ipv6Cidr::SOLICITED_NODE_PREFIX)],
     neighbor_cache: [None; 8],
 };
 
 #[rtic::app(device = stm32f4xx_hal::stm32, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
 const APP: () = {
     struct Resources {
-        eth_iface: EthernetInterface<
-            'static,
-            smoltcp_phy::SmoltcpDevice<SpiEth>>,
-        itm: ITM
+        eth_iface: EthernetInterface<'static, smoltcp_phy::SmoltcpDevice<SpiEth>>,
+        itm: ITM,
     }
 
     #[init()]
@@ -113,7 +101,10 @@ const APP: () = {
         c.core.DWT.enable_cycle_counter();
         c.core.DCB.enable_trace();
 
-        let clocks = c.device.RCC.constrain()
+        let clocks = c
+            .device
+            .RCC
+            .constrain()
             .cfgr
             .sysclk(168.mhz())
             .hclk(168.mhz())
@@ -126,8 +117,7 @@ const APP: () = {
         let mut itm = c.core.ITM;
         let stim0 = &mut itm.stim[0];
 
-        iprintln!(stim0,
-            "Eth TCP Server on STM32-F407 via NIC100/ENC424J600");
+        iprintln!(stim0, "Eth TCP Server on STM32-F407 via NIC100/ENC424J600");
 
         // NIC100 / ENC424J600 Set-up
         let spi1 = c.device.SPI1;
@@ -147,13 +137,14 @@ const APP: () = {
         let eth_iface = {
             let mut spi_eth = {
                 let spi_eth_port = Spi::spi1(
-                    spi1, (spi1_sck, spi1_miso, spi1_mosi),
+                    spi1,
+                    (spi1_sck, spi1_miso, spi1_mosi),
                     enc424j600::spi::interfaces::SPI_MODE,
                     Hertz(enc424j600::spi::interfaces::SPI_CLOCK_FREQ),
-                    clocks);
+                    clocks,
+                );
 
-                SpiEth::new(spi_eth_port, spi1_nss)
-                    .cpu_freq_mhz(168)
+                SpiEth::new(spi_eth_port, spi1_nss).cpu_freq_mhz(168)
             };
 
             // Init controller
@@ -175,7 +166,7 @@ const APP: () = {
                     0 => iprint!(stim0, "MAC Address = {:02x}-", byte),
                     1..=4 => iprint!(stim0, "{:02x}-", byte),
                     5 => iprint!(stim0, "{:02x}\n", byte),
-                _ => ()
+                    _ => (),
                 };
             }
 
@@ -208,10 +199,7 @@ const APP: () = {
         timer_setup(delay.free(), clocks);
         iprintln!(stim0, "Timer initialized");
 
-        init::LateResources {
-            eth_iface,
-            itm
-        }
+        init::LateResources { eth_iface, itm }
     }
 
     #[idle(resources=[eth_iface, itm])]
@@ -241,8 +229,11 @@ const APP: () = {
         let greet_handle = socket_set.add(greet_socket);
         {
             let store = unsafe { &mut NET_STORE };
-            iprintln!(stim0,
-                "TCP sockets will listen at {}", store.ip_addrs[0].address());
+            iprintln!(
+                stim0,
+                "TCP sockets will listen at {}",
+                store.ip_addrs[0].address()
+            );
         }
 
         // Copied / modified from:
@@ -254,8 +245,7 @@ const APP: () = {
             let now = timer_now().0;
             let instant = Instant::from_millis(now as i64);
             match iface.poll(&mut socket_set, instant) {
-                Ok(_) => {
-                },
+                Ok(_) => {}
                 Err(e) => {
                     iprintln!(stim0, "[{}] Poll error: {:?}", instant, e)
                 }
@@ -264,33 +254,40 @@ const APP: () = {
             {
                 let mut socket = socket_set.get::<TcpSocket>(echo_handle);
                 if !socket.is_open() {
-                    iprintln!(stim0,
-                        "[{}] Listening to port 1234 for echoing, time-out in 10s", instant);
+                    iprintln!(
+                        stim0,
+                        "[{}] Listening to port 1234 for echoing, time-out in 10s",
+                        instant
+                    );
                     socket.listen(1234).unwrap();
                     socket.set_timeout(Some(smoltcp::time::Duration::from_millis(10000)));
                 }
                 if socket.can_recv() {
-                    iprintln!(stim0,
-                    "[{}] Received packet: {:?}", instant, socket.recv(|buffer| {
-                        (buffer.len(), str::from_utf8(buffer).unwrap())
-                    }));
+                    iprintln!(
+                        stim0,
+                        "[{}] Received packet: {:?}",
+                        instant,
+                        socket.recv(|buffer| { (buffer.len(), str::from_utf8(buffer).unwrap()) })
+                    );
                 }
             }
             // Control the "greeting" socket (:4321)
             {
                 let mut socket = socket_set.get::<TcpSocket>(greet_handle);
                 if !socket.is_open() {
-                    iprintln!(stim0,
+                    iprintln!(
+                        stim0,
                         "[{}] Listening to port 4321 for greeting, \
-                        please connect to the port", instant);
+                        please connect to the port",
+                        instant
+                    );
                     socket.listen(4321).unwrap();
                 }
 
                 if socket.can_send() {
                     let greeting = "Welcome to the server demo for STM32-F407!";
                     write!(socket, "{}\n", greeting).unwrap();
-                    iprintln!(stim0,
-                        "[{}] Greeting sent, socket closed", instant);
+                    iprintln!(stim0, "[{}] Greeting sent, socket closed", instant);
                     socket.close();
                 }
             }

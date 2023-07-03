@@ -6,7 +6,7 @@ pub struct TxBuffer {
     start_addr: u16,
     // The following two fields are controlled by firmware
     next_addr: u16,
-    tail_addr: u16
+    tail_addr: u16,
 }
 
 impl TxBuffer {
@@ -14,28 +14,28 @@ impl TxBuffer {
         TxBuffer {
             start_addr: 0x0000,
             next_addr: 0x0001,
-            tail_addr: 0x0000
+            tail_addr: 0x0000,
         }
     }
 
     pub fn set_start_addr(&mut self, addr: u16) {
         self.start_addr = addr;
     }
-    pub fn get_start_addr(& self) -> u16{
+    pub fn get_start_addr(&self) -> u16 {
         self.start_addr
     }
 
     pub fn set_next_addr(&mut self, addr: u16) {
         self.next_addr = addr;
     }
-    pub fn get_next_addr(& self) -> u16 {
+    pub fn get_next_addr(&self) -> u16 {
         self.next_addr
     }
 
     pub fn set_tail_addr(&mut self, addr: u16) {
         self.tail_addr = addr;
     }
-    pub fn get_tail_addr(& self) -> u16{
+    pub fn get_tail_addr(&self) -> u16 {
         self.tail_addr
     }
 }
@@ -44,14 +44,14 @@ impl TxBuffer {
 /// TODO: Generalise MAC addresses
 pub struct TxPacket {
     frame: [u8; RAW_FRAME_LENGTH_MAX],
-    frame_length: usize
+    frame_length: usize,
 }
 
 impl TxPacket {
     pub fn new() -> Self {
         TxPacket {
             frame: [0; RAW_FRAME_LENGTH_MAX],
-            frame_length: 0
+            frame_length: 0,
         }
     }
 

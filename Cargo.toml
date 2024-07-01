@@ -15,28 +15,10 @@ aligned = "0.3"
 embedded-hal = "1"
 smoltcp = { version = "0.7.0", default-features = false, features = [ "socket-raw", "proto-ipv4",
     "proto-ipv6", "socket-tcp", "ethernet"], optional = true }
-cortex-m = {version = "0.5", optional = true }
-
-# Optional dependencies for building examples
-[dev-dependencies]
-stm32f4xx-hal = { version = "0.8", features = ["stm32f407", "rt"] }
-cortex-m-rt = "0.6"
-cortex-m-rtic = "0.5.3"
-panic-itm = "0.4"
-log = "0.4"
 
 [features]
 smoltcp-phy = ["smoltcp"]
-cortex-m-cpu = ["cortex-m"]
 default = []
-
-[[example]]
-name = "tx_stm32f407"
-required-features = ["smoltcp", "cortex-m-cpu"]
-
-[[example]]
-name = "tcp_stm32f407"
-required-features = ["smoltcp", "cortex-m-cpu"]
 
 [profile.release]
 codegen-units = 1

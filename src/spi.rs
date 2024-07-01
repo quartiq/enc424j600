@@ -1,22 +1,23 @@
-use embedded_hal::{blocking::spi::Transfer, digital::v2::OutputPin};
+use embedded_hal::spi::SpiDevice;
 
 pub mod interfaces {
-    use embedded_hal::spi;
     /// Must use SPI mode cpol=0, cpha=0
-    pub const SPI_MODE: spi::Mode = spi::Mode {
-        polarity: spi::Polarity::IdleLow,
-        phase: spi::Phase::CaptureOnFirstTransition,
-    };
+    pub const SPI_MODE: embedded_hal::spi::Mode = embedded_hal::spi::MODE_0;
+
     /// Max freq = 14 MHz
     pub const SPI_CLOCK_FREQ: u32 = 14_000_000;
 }
 
 pub mod opcodes {
-    /// 1-byte Instructions
-    pub const SETETHRST: u8 = 0b1100_1010;
-    pub const SETPKTDEC: u8 = 0b1100_1100;
-    pub const SETTXRTS: u8 = 0b1101_0100;
-    pub const ENABLERX: u8 = 0b1110_1000;
+    #[repr(u8)]
+    pub enum OneByteOpcode {
+        /// 1-byte Instructions
+        SETETHRST = 0b1100_1010,
+        SETPKTDEC = 0b1100_1100,
+        SETTXRTS = 0b1101_0100,
+        ENABLERX = 0b1110_1000,
+    }
+
     /// 3-byte Instructions
     pub const WRXRDPT: u8 = 0b0110_0100; // 8-bit opcode followed by data
     pub const RRXRDPT: u8 = 0b0110_0110; // 8-bit opcode followed by data
@@ -58,39 +59,17 @@ pub mod addrs {
 
 /// Struct for SPI I/O interface on ENC424J600
 /// Note: stm32f4xx_hal::spi's pins include: SCK, MISO, MOSI
-pub struct SpiPort<SPI: Transfer<u8>, NSS: OutputPin> {
+pub struct SpiPort<SPI> {
     spi: SPI,
-    nss: NSS,
-    #[cfg(feature = "cortex-m-cpu")]
-    cpu_freq_mhz: f32,
-}
-
-pub enum Error {
-    OpcodeError,
-    TransferError,
 }
 
 #[allow(unused_must_use)]
-impl<SPI: Transfer<u8>, NSS: OutputPin> SpiPort<SPI, NSS> {
-    // TODO: return as Result()
-    pub fn new(spi: SPI, mut nss: NSS) -> Self {
-        nss.set_high();
-
-        SpiPort {
-            spi,
-            nss,
-            #[cfg(feature = "cortex-m-cpu")]
-            cpu_freq_mhz: 0.,
-        }
+impl<SPI: SpiDevice> SpiPort<SPI> {
+    pub fn new(spi: SPI) -> Self {
+        SpiPort { spi }
     }
 
-    #[cfg(feature = "cortex-m-cpu")]
-    pub fn cpu_freq_mhz(mut self, freq: u32) -> Self {
-        self.cpu_freq_mhz = freq as f32;
-        self
-    }
-
-    pub fn read_reg_8b(&mut self, addr: u8) -> Result<u8, Error> {
+    pub fn read_reg_8b(&mut self, addr: u8) -> Result<u8, SPI::Error> {
         // Using RCRU instruction to read using unbanked (full) address
         let mut buf: [u8; 4] = [0; 4];
         buf[1] = addr;
@@ -98,7 +77,7 @@ impl<SPI: Transfer<u8>, NSS: OutputPin> SpiPort<SPI, NSS> {
         Ok(buf[2])
     }
 
-    pub fn read_reg_16b(&mut self, lo_addr: u8) -> Result<u16, Error> {
+    pub fn read_reg_16b(&mut self, lo_addr: u8) -> Result<u16, SPI::Error> {
         // Unless the register can be written with specific opcode,
         // use WCRU instruction to write using unbanked (full) address
         let mut buf: [u8; 4] = [0; 4];
@@ -124,17 +103,25 @@ impl<SPI: Transfer<u8>, NSS: OutputPin> SpiPort<SPI, NSS> {
     }
 
     // Currently requires manual slicing (buf[1..]) for the data read back
-    pub fn read_rxdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize) -> Result<(), Error> {
+    pub fn read_rxdat<'a>(
+        &mut self,
+        buf: &'a mut [u8],
+        data_length: usize,
+    ) -> Result<(), SPI::Error> {
         self.rw_n(buf, opcodes::RRXDATA, data_length)
     }
 
     // Currently requires actual data to be stored in buf[1..] instead of buf[0..]
     // TODO: Maybe better naming?
-    pub fn write_txdat<'a>(&mut self, buf: &'a mut [u8], data_length: usize) -> Result<(), Error> {
+    pub fn write_txdat<'a>(
+        &mut self,
+        buf: &'a mut [u8],
+        data_length: usize,
+    ) -> Result<(), SPI::Error> {
         self.rw_n(buf, opcodes::WGPDATA, data_length)
     }
 
-    pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), Error> {
+    pub fn write_reg_8b(&mut self, addr: u8, data: u8) -> Result<(), SPI::Error> {
         // Using WCRU instruction to write using unbanked (full) address
         let mut buf: [u8; 3] = [0; 3];
         buf[1] = addr;
@@ -142,7 +129,7 @@ impl<SPI: Transfer<u8>, NSS: OutputPin> SpiPort<SPI, NSS> {
         self.rw_n(&mut buf, opcodes::WCRU, 2)
     }
 
-    pub fn write_reg_16b(&mut self, lo_addr: u8, data: u16) -> Result<(), Error> {
+    pub fn write_reg_16b(&mut self, lo_addr: u8, data: u16) -> Result<(), SPI::Error> {
         // Unless the register can be written with specific opcode,
         // use WCRU instruction to write using unbanked (full) address
         let mut buf: [u8; 4] = [0; 4];
@@ -168,14 +155,9 @@ impl<SPI: Transfer<u8>, NSS: OutputPin> SpiPort<SPI, NSS> {
         )
     }
 
-    pub fn send_opcode(&mut self, opcode: u8) -> Result<(), Error> {
-        match opcode {
-            opcodes::SETETHRST | opcodes::SETPKTDEC | opcodes::SETTXRTS | opcodes::ENABLERX => {
-                let mut buf: [u8; 1] = [0];
-                self.rw_n(&mut buf, opcode, 0)
-            }
-            _ => Err(Error::OpcodeError),
-        }
+    pub fn send_opcode(&mut self, opcode: opcodes::OneByteOpcode) -> Result<(), SPI::Error> {
+        let mut buf: [u8; 1] = [0];
+        self.rw_n(&mut buf, opcode as u8, 0)
     }
 
     // TODO: Actual data should start from buf[0], not buf[1]
@@ -185,33 +167,22 @@ impl<SPI: Transfer<u8>, NSS: OutputPin> SpiPort<SPI, NSS> {
     // receiving or sending n*8-bit data.
     // The slice of buffer provided must begin with the 8-bit instruction.
     // If n = 0, the transfer will only involve sending the instruction.
-    fn rw_n<'a>(&mut self, buf: &'a mut [u8], opcode: u8, data_length: usize) -> Result<(), Error> {
+    fn rw_n<'a>(
+        &mut self,
+        buf: &'a mut [u8],
+        opcode: u8,
+        data_length: usize,
+    ) -> Result<(), SPI::Error> {
         assert!(buf.len() > data_length);
-        // Enable chip select
-        self.nss.set_low();
-        // >=50ns min. CS_n setup time
-        #[cfg(feature = "cortex-m-cpu")]
-        cortex_m::asm::delay((0.05 * (self.cpu_freq_mhz + 1.)) as u32);
+
         // Start writing to SLAVE
         buf[0] = opcode;
-        let result = self.spi.transfer(&mut buf[..data_length + 1]);
-        match opcode {
-            opcodes::RCRU | opcodes::WCRU | opcodes::RRXDATA | opcodes::WGPDATA => {
-                // Disable chip select
-                // >=50ns min. CS_n hold time
-                #[cfg(feature = "cortex-m-cpu")]
-                cortex_m::asm::delay((0.05 * (self.cpu_freq_mhz + 1.)) as u32);
-                self.nss.set_high();
-                // >=20ns min. CS_n disable time
-                #[cfg(feature = "cortex-m-cpu")]
-                cortex_m::asm::delay((0.02 * (self.cpu_freq_mhz + 1.)) as u32);
-            }
-            _ => {}
-        }
-        match result {
-            Ok(_) => Ok(()),
-            // TODO: Maybe too naive?
-            Err(_) => Err(Error::TransferError),
-        }
+
+        self.spi.transaction(&mut [
+            embedded_hal::spi::Operation::DelayNs(50),
+            embedded_hal::spi::Operation::TransferInPlace(&mut buf[..data_length + 1]),
+            embedded_hal::spi::Operation::DelayNs(50),
+        ])?;
+        Ok(())
     }
 }
